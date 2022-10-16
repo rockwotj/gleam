@@ -37,25 +37,12 @@ Ref<T> MakeRef(Args&&... args) {
 template <typename ReturnType, typename... Args>
 using Function = std::function<ReturnType(Args...)>;
 
-namespace _private {
-
-template <typename ConstructorType>, typename... Args>
-class ConstructorWrapper : public Function<Ref<ReturnType>, Args...> {
-public:
-  explicit ConstructorWrapper() {}
-
-  Ref<ReturnType> operator()(Args... args) const override {
-    return MakeRef<ReturnType>(args...);
-  }
-};
-
-}  // namespace _private
-
 
 template <typename ConstructorType, typename... Args>
-Ref<Function<Ref<ConstructorType>, Args>> WrappedConstructor() {
-  Function<Ref<ReturnType>, Args...>* wrapped = new _private::ConstructorWrapper<ReturnType, Args...>();
-  return Ref<Function<ReturnType, Args...>>(wrapped);
+Function<Ref<ConstructorType>(Args...)> WrappedConstructor() {
+  return [](Args... args) -> Ref<ConstructorType> {
+    return MakeRef<ConstructorType>(args...);
+  };
 }
 
 }  // namespace gleam

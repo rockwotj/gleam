@@ -78,3 +78,17 @@ fn noop() -> Void {
 "#,
     );
 }
+
+#[test]
+fn constructor_fn() {
+    assert_cpp!(
+        r#"
+pub type Person { Person(name: String) }
+
+fn new(name: String) -> Person {
+  let constructor_fn = Person;
+  constructor_fn(name)
+}
+"#,
+    );
+}

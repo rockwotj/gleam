@@ -142,9 +142,9 @@ impl<'module> ExpressionGenerator {
                     )
                     .collect(),
                 );
-                // TODO: Make this a lambda
                 GeneratedExpr::result(docvec!(
                     "gleam::WrappedConstructor<",
+                    // TODO: This seems to be the wrong public?
                     to_symbol(name, *public, &module),
                     break_(",", ", "),
                     arg_types,
