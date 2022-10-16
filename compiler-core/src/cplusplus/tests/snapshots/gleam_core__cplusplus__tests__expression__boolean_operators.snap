@@ -1,0 +1,64 @@
+---
+source: compiler-core/src/cplusplus/tests/expression.rs
+expression: "\npub fn or_op(x, y) {\n  x < 5 || y < 10\n}\npub fn and_op(x, y) {\n  x < 5 && y < 10\n}\npub fn both_ops(x, y) {\n  { x < 5 || y < 10 } && { x > 5 || y > 10 }\n}"
+---
+#ifndef MY_PACKAGE_MY_MODULE_H_
+#define MY_PACKAGE_MY_MODULE_H_
+
+#include <gleam.h>
+
+namespace my {
+namespace module {
+
+bool or_op(int64_t x, int64_t y);
+
+bool and_op(int64_t x, int64_t y);
+
+bool both_ops(int64_t x, int64_t y);
+
+} // namespace my
+} // namespace module
+
+#endif // MY_PACKAGE_MY_MODULE_H_
+
+---
+#include "module.h"
+
+namespace my {
+namespace module {
+
+bool or_op(int64_t x, int64_t y) {
+  bool tmp = x < 5;
+  if (!tmp) {
+    tmp = y < 10;
+  }
+  return tmp;
+};
+
+bool and_op(int64_t x, int64_t y) {
+  bool tmp = x < 5;
+  if (tmp) {
+    tmp = y < 10;
+  }
+  return tmp;
+};
+
+bool both_ops(int64_t x, int64_t y) {
+  bool tmp = x < 5;
+  if (!tmp) {
+    tmp = y < 10;
+  }
+  bool tmp$1 = tmp;
+  if (tmp$1) {
+    bool tmp$2 = x > 5;
+    if (!tmp$2) {
+      tmp$2 = y > 10;
+    }
+    tmp$1 = tmp$2;
+  }
+  return tmp$1;
+};
+
+} // namespace my
+} // namespace module
+

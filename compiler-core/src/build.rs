@@ -38,6 +38,8 @@ pub enum Target {
     Erlang,
     #[serde(rename = "javascript")]
     JavaScript,
+    #[serde(rename = "c++")]
+    CPlusPlus,
 }
 
 impl Target {
@@ -52,13 +54,16 @@ pub enum TargetCodegenConfiguration {
     Erlang {
         app_file: Option<ErlangAppCodegenConfiguration>,
     },
+    CPlusPlus,
 }
 
 impl TargetCodegenConfiguration {
     pub fn target(&self) -> Target {
         match self {
             Self::JavaScript => Target::JavaScript,
+            Self::CPlusPlus => Target::CPlusPlus,
             Self::Erlang { .. } => Target::Erlang,
+            Self::CPlusPlus => Target::CPlusPlus
         }
     }
 }

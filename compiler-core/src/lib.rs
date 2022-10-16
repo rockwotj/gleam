@@ -55,6 +55,7 @@ pub mod bit_string;
 pub mod build;
 pub mod codegen;
 pub mod config;
+pub mod cplusplus;
 pub mod diagnostic;
 pub mod docs;
 pub mod erlang;

@@ -1,7 +1,7 @@
 use crate::{
     ast::{SrcSpan, TypedModule, UntypedModule},
     build::{dep_tree, Mode, Module, Origin, Package, Target},
-    codegen::{Erlang, ErlangApp, JavaScript},
+    codegen::{CPlusPlus, Erlang, ErlangApp, JavaScript},
     config::PackageConfig,
     error,
     io::{
@@ -327,9 +327,11 @@ where
 
         match self.target {
             TargetCodegenConfiguration::JavaScript => self.perform_javascript_codegen(modules),
+            TargetCodegenConfiguration::CPlusPlus => self.perform_cpp_codegen(modules),
             TargetCodegenConfiguration::Erlang { app_file } => {
                 self.perform_erlang_codegen(modules, app_file.as_ref())
             }
+            TargetCodegenConfiguration::CPlusPlus => self.perform_cpp_codegen(modules),
         }
     }
 
@@ -378,6 +380,18 @@ where
         let artifact_dir = self.out.join("dist");
 
         JavaScript::new(&artifact_dir, &self.config.javascript).render(&self.io, modules)?;
+
+        if self.copy_native_files {
+            self.copy_project_native_files(&artifact_dir, &mut written)?;
+        }
+        Ok(())
+    }
+
+    fn perform_cpp_codegen(&mut self, modules: &[Module]) -> Result<(), Error> {
+        let mut written = HashSet::new();
+        let artifact_dir = self.out.join("dist");
+
+        CPlusPlus::new(&artifact_dir).render(&self.io, modules)?;
 
         if self.copy_native_files {
             self.copy_project_native_files(&artifact_dir, &mut written)?;

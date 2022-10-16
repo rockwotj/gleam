@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+use crate::ast::SrcSpan;
 use crate::diagnostic::{Diagnostic, Label, Location};
-use crate::{ast::BinOp, parse::error::ParseErrorType, type_::Type};
+use crate::{ast::BinOp, cplusplus, parse::error::ParseErrorType, type_::Type};
 use crate::{
     bit_string,
     diagnostic::Level,
@@ -47,7 +48,7 @@ pub enum Error {
     UnknownImport {
         module: Name,
         import: Name,
-        location: crate::ast::SrcSpan,
+        location: SrcSpan,
         path: PathBuf,
         src: String,
         modules: Vec<String>,
@@ -67,7 +68,7 @@ pub enum Error {
     SrcImportingTest {
         path: PathBuf,
         src: Src,
-        location: crate::ast::SrcSpan,
+        location: SrcSpan,
         src_module: Name,
         test_module: Name,
     },
@@ -151,6 +152,13 @@ pub enum Error {
         path: PathBuf,
         src: Src,
         error: crate::javascript::Error,
+    },
+
+    #[error("c++ codegen failed")]
+    CPlusPlus {
+        path: PathBuf,
+        src: Src,
+        error: crate::cplusplus::error::Error,
     },
 
     #[error("package downloading failed: {error}")]
@@ -1981,7 +1989,7 @@ These values are not matched:
                 let text = extra.join("\n");
 
                 let adjusted_location = if error.error == ParseErrorType::UnexpectedEof {
-                    crate::ast::SrcSpan {
+                    SrcSpan {
                         start: (src.len() - 1) as u32,
                         end: (src.len() - 1) as u32,
                     }
@@ -2285,6 +2293,43 @@ issue in our tracker: https://github.com/gleam-lang/gleam/issues",
                     hint: None,
                     location: None,
                     level: Level::Error,
+                }
+            }
+            Error::CPlusPlus { src, path, error } => {
+                let location = Some(Location {
+                    label: Label {
+                        text: None,
+                        span: SrcSpan {
+                            start: 0,
+                            end: src.len() as u32,
+                        },
+                    },
+                    path: path.clone(),
+                    src: src.into(),
+                    extra_labels: vec![],
+                });
+                match error {
+                    cplusplus::error::Error::InvalidModuleName => Diagnostic {
+                        title: "Unexpected C++ Codegen Error".into(),
+                        text: "There was an unexpected error".into(),
+                        hint: None,
+                        level: Level::Error,
+                        location,
+                    },
+                    cplusplus::error::Error::Unimplemented { message } => Diagnostic {
+                        title: "Unimplemented C++ Codegen".into(),
+                        text: format!("Feature is unimplemented in the C++ backend: {}", message),
+                        hint: None,
+                        level: Level::Error,
+                        location,
+                    },
+                    cplusplus::error::Error::InternalError { message } => Diagnostic {
+                        title: "Internal Error C++ Codegen".into(),
+                        text: message.clone(),
+                        hint: None,
+                        level: Level::Error,
+                        location,
+                    },
                 }
             }
         }

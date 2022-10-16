@@ -1,0 +1,52 @@
+---
+source: compiler-core/src/cplusplus/tests/expression.rs
+expression: "\npub type Person {\n  Person(name: String, age: Int)\n}\n\npub fn increment(n: Int) -> Int {\n  n + 1\n}\n\npub fn birthday(person: Person) -> Person {\n  let next_age = increment(person.age);\n  Person(person.name, next_age)\n}\n    "
+---
+#ifndef MY_PACKAGE_MY_MODULE_H_
+#define MY_PACKAGE_MY_MODULE_H_
+
+#include <gleam.h>
+
+namespace my {
+namespace module {
+
+class Person;
+
+int64_t increment(int64_t n);
+
+gleam::Ref<::my::module::Person> birthday(gleam::Ref<::my::module::Person> person);
+
+class Person {
+public:
+  Person(gleam::Ref<gleam::String> name, int64_t age) : m$name(name), m$age(age) {}
+  gleam::Ref<gleam::String> name() const { return m$name; }
+  int64_t age() const { return m$age; }
+private:
+  gleam::Ref<gleam::String> m$name;
+  int64_t m$age;
+};
+
+} // namespace my
+} // namespace module
+
+#endif // MY_PACKAGE_MY_MODULE_H_
+
+---
+#include "module.h"
+
+namespace my {
+namespace module {
+
+int64_t increment(int64_t n) {
+  return n + 1;
+};
+
+gleam::Ref<::my::module::Person> birthday(gleam::Ref<::my::module::Person> person) {
+  int64_t next_age = ::my::module::_private::increment(person->age());
+  return ::my::module::_private::Person(person->name(),
+  next_age);
+};
+
+} // namespace my
+} // namespace module
+

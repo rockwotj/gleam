@@ -1,0 +1,58 @@
+---
+source: compiler-core/src/cplusplus/tests/records.rs
+expression: "\npub type Animal {\n  Cat(name: String, likes_milk: Bool)\n  Dog(name: String, barks: Bool)\n}\n"
+---
+#ifndef MY_PACKAGE_MY_MODULE_H_
+#define MY_PACKAGE_MY_MODULE_H_
+
+#include <gleam.h>
+
+namespace my {
+namespace module {
+
+class Animal;
+
+class Cat;
+
+class Dog;
+
+class Animal {
+public:
+  Animal(gleam::Ref<gleam::String> name) : m$name(name) {}
+  gleam::Ref<gleam::String> name() const { return m$name; }
+private:
+  gleam::Ref<gleam::String> m$name;
+};
+
+class Cat : public Animal {
+public:
+  Cat(gleam::Ref<gleam::String> name, bool likes_milk) : Animal(name), m$likes_milk(likes_milk) {}
+  bool likes_milk() const { return m$likes_milk; }
+private:
+  bool m$likes_milk;
+};
+
+class Dog : public Animal {
+public:
+  Dog(gleam::Ref<gleam::String> name, bool barks) : Animal(name), m$barks(barks) {}
+  bool barks() const { return m$barks; }
+private:
+  bool m$barks;
+};
+
+} // namespace my
+} // namespace module
+
+#endif // MY_PACKAGE_MY_MODULE_H_
+
+---
+#include "module.h"
+
+namespace my {
+namespace module {
+
+
+
+} // namespace my
+} // namespace module
+

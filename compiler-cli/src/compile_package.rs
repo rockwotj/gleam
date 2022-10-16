@@ -21,6 +21,7 @@ pub fn command(options: CompilePackage) -> Result<()> {
     let target = match options.target {
         Target::Erlang => TargetCodegenConfiguration::Erlang { app_file: None },
         Target::JavaScript => TargetCodegenConfiguration::JavaScript,
+        Target::CPlusPlus => TargetCodegenConfiguration::CPlusPlus,
     };
 
     tracing::info!("Compiling package");

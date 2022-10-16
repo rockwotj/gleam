@@ -1,0 +1,58 @@
+---
+source: compiler-core/src/cplusplus/tests/records.rs
+expression: "\npub type Either(left_type, right_type) {\n  Left(v: left_type)\n  Right(v: right_type)\n}\n"
+---
+#ifndef MY_PACKAGE_MY_MODULE_H_
+#define MY_PACKAGE_MY_MODULE_H_
+
+#include <gleam.h>
+
+namespace my {
+namespace module {
+
+class Either;
+
+class Left;
+
+class Right;
+
+class Either {
+public:
+  Either() {}
+  
+private:
+  
+};
+
+class Left : public Either {
+public:
+  Left(? v) : Either(), m$v(v) {}
+  ? v() const { return m$v; }
+private:
+  ? m$v;
+};
+
+class Right : public Either {
+public:
+  Right(? v) : Either(), m$v(v) {}
+  ? v() const { return m$v; }
+private:
+  ? m$v;
+};
+
+} // namespace my
+} // namespace module
+
+#endif // MY_PACKAGE_MY_MODULE_H_
+
+---
+#include "module.h"
+
+namespace my {
+namespace module {
+
+
+
+} // namespace my
+} // namespace module
+

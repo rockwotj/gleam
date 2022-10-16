@@ -223,3 +223,46 @@ impl<'a> JavaScript<'a> {
         res
     }
 }
+
+#[derive(Debug)]
+pub struct CPlusPlus<'a> {
+    output_directory: &'a Path,
+}
+
+impl<'a> CPlusPlus<'a> {
+    pub fn new(output_directory: &'a Path) -> Self {
+        Self { output_directory }
+    }
+
+    pub fn render(&self, writer: &impl FileSystemWriter, modules: &[Module]) -> Result<()> {
+        for module in modules {
+            let mod_name = module.name.clone();
+            self.module_header(writer, module, &mod_name)?;
+            self.module_impl(writer, module, &mod_name)?;
+        }
+        self.write_prelude(writer)?;
+        return Ok(());
+    }
+
+    fn module_header(
+        &self,
+        _writer: &impl FileSystemWriter,
+        _module: &Module,
+        _mod_name: &String,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    fn module_impl(
+        &self,
+        _writer: &impl FileSystemWriter,
+        _module: &Module,
+        _mod_name: &String,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    fn write_prelude(&self, _writer: &impl FileSystemWriter) -> Result<()> {
+        todo!()
+    }
+}

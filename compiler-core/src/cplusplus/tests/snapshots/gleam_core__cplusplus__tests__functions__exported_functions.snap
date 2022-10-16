@@ -1,0 +1,32 @@
+---
+source: compiler-core/src/cplusplus/tests/functions.rs
+expression: "\npub fn add(x, y) {\n    x + y\n}"
+---
+#ifndef MY_PACKAGE_MY_MODULE_H_
+#define MY_PACKAGE_MY_MODULE_H_
+
+#include <gleam.h>
+
+namespace my {
+namespace module {
+
+int64_t add(int64_t x, int64_t y);
+
+} // namespace my
+} // namespace module
+
+#endif // MY_PACKAGE_MY_MODULE_H_
+
+---
+#include "module.h"
+
+namespace my {
+namespace module {
+
+int64_t add(int64_t x, int64_t y) {
+  return x + y;
+};
+
+} // namespace my
+} // namespace module
+
