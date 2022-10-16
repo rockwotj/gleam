@@ -34,7 +34,7 @@ namespace my {
 namespace module {
 
 gleam::Ref<::my::module::Void> noop() {
-  gleam::Ref<::my::module::Void> v = gleam::MakeRef<::my::module::_private::Void>();
+  gleam::Ref<::my::module::Void> v = gleam::MakeRef<::my::module::Void>();
   return v;
 };
 

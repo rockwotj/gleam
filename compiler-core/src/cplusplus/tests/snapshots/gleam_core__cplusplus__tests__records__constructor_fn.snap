@@ -34,7 +34,7 @@ namespace my {
 namespace module {
 
 gleam::Ref<::my::module::Person> new(gleam::Ref<gleam::String> name) {
-  gleam::Function<gleam::Ref<::my::module::Person>, gleam::Ref<gleam::String>> constructor_fn = gleam::WrappedConstructor<::my::module::_private::Person, gleam::Ref<gleam::String>>();
+  gleam::Function<gleam::Ref<::my::module::Person>, gleam::Ref<gleam::String>> constructor_fn = gleam::WrappedConstructor<::my::module::Person, gleam::Ref<gleam::String>>();
   return constructor_fn(name);
 };
 
