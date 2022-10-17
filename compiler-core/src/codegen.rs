@@ -5,7 +5,7 @@ use crate::{
     io::{FileSystemWriter, Utf8Writer},
     javascript,
     line_numbers::LineNumbers,
-    Result,
+    Result, cplusplus,
 };
 use itertools::Itertools;
 use std::{fmt::Debug, path::Path};
@@ -246,23 +246,48 @@ impl<'a> CPlusPlus<'a> {
 
     fn module_header(
         &self,
-        _writer: &impl FileSystemWriter,
-        _module: &Module,
-        _mod_name: &String,
+        writer: &impl FileSystemWriter,
+        module: &Module,
+        mod_name: &String,
     ) -> Result<()> {
-        todo!()
+        let name = format!("{}.h", mod_name);
+        let path = self.output_directory.join(&name);
+        let line_numbers = LineNumbers::new(&module.code);
+        let mut file = writer.writer(&path)?;
+        cplusplus::module_header(
+            &module.ast,
+            &line_numbers, 
+            &path, 
+            &module.code,
+            &mut file 
+        )
     }
 
     fn module_impl(
         &self,
-        _writer: &impl FileSystemWriter,
-        _module: &Module,
-        _mod_name: &String,
+        writer: &impl FileSystemWriter,
+        module: &Module,
+        mod_name: &String,
     ) -> Result<()> {
-        todo!()
+        let name = format!("{}.cc", mod_name);
+        let path = self.output_directory.join(&name);
+        let line_numbers = LineNumbers::new(&module.code);
+        let mut file = writer.writer(&path)?;
+        cplusplus::module_impl(
+            &module.ast,
+            &line_numbers, 
+            &path, 
+            &module.code,
+            &mut file 
+        )
     }
 
-    fn write_prelude(&self, _writer: &impl FileSystemWriter) -> Result<()> {
-        todo!()
+    fn write_prelude(&self, writer: &impl FileSystemWriter) -> Result<()> {
+        writer
+            .writer(&self.output_directory.join("gleam.h"))?
+            .str_write(cplusplus::PRELUDE_HEADER)?;
+        writer
+            .writer(&self.output_directory.join("gleam.cc"))?
+            .str_write(cplusplus::PRELUDE_IMPL)
     }
 }

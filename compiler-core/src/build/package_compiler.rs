@@ -331,7 +331,6 @@ where
             TargetCodegenConfiguration::Erlang { app_file } => {
                 self.perform_erlang_codegen(modules, app_file.as_ref())
             }
-            TargetCodegenConfiguration::CPlusPlus => self.perform_cpp_codegen(modules),
         }
     }
 

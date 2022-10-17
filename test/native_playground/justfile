@@ -1,0 +1,11 @@
+
+gleam_tool := justfile_directory() / "../../target/debug/gleam"
+
+transpile:
+	cargo build
+	{{ gleam_tool }} compile-package \
+		--package {{ justfile_directory() }}/playground \
+		--out {{ justfile_directory() }}/output \
+		--lib {{ justfile_directory() }}/lib \
+		--target native
+

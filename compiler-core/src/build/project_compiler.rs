@@ -465,7 +465,7 @@ where
                     include_dev_deps: is_root,
                 }),
             },
-            Target::CPlusPlus => super::TargetCodegenConfiguration::CPlusPlus,
+            Target::Native => super::TargetCodegenConfiguration::CPlusPlus,
             Target::JavaScript => super::TargetCodegenConfiguration::JavaScript,
         };
         let mut compiler = PackageCompiler::new(

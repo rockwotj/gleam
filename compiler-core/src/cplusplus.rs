@@ -22,6 +22,9 @@ pub type Output<'a> = Result<Document<'a>, error::Error>;
 
 const INDENT: isize = 2;
 
+pub const PRELUDE_HEADER: &str = include_str!("../templates/gleam.h");
+pub const PRELUDE_IMPL: &str = include_str!("../templates/gleam.cc");
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum CppStatementType {
     Alias,
