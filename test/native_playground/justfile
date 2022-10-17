@@ -1,11 +1,17 @@
-
 gleam_tool := justfile_directory() / "../../target/debug/gleam"
 
 transpile:
 	cargo build
 	{{ gleam_tool }} compile-package \
 		--package {{ justfile_directory() }}/playground \
-		--out {{ justfile_directory() }}/output \
 		--lib {{ justfile_directory() }}/lib \
+		--out {{ justfile_directory() }}/output \
 		--target native
+
+watch:
+	watchexec --exts rs,gleam \
+		--watch {{ justfile_directory() }} \
+		--clear \
+		--on-busy-update=restart \
+		-- just transpile
 
