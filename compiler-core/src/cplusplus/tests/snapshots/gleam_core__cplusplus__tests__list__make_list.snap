@@ -1,0 +1,36 @@
+---
+source: compiler-core/src/cplusplus/tests/list.rs
+expression: "\npub fn palindrome(x: String, y: String, z: String) -> List(String) {\n    [x, y, z, y, x]\n}"
+---
+#ifndef MY_PACKAGE_MY_MODULE_H_
+#define MY_PACKAGE_MY_MODULE_H_
+
+#include <gleam.h>
+
+namespace my {
+namespace module {
+
+gleam::Ref<gleam::List> palindrome(gleam::String x, gleam::String y, gleam::String z);
+
+} // namespace my
+} // namespace module
+
+#endif // MY_PACKAGE_MY_MODULE_H_
+
+---
+#include "module.h"
+
+namespace my {
+namespace module {
+
+gleam::Ref<gleam::List> palindrome(gleam::String x, gleam::String y, gleam::String z) {
+  return gleam::MakeList<gleam::String>({x,
+  y,
+  z,
+  y,
+  x});
+};
+
+} // namespace my
+} // namespace module
+

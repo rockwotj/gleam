@@ -36,6 +36,7 @@ impl<'a> LocalVariable<'a> {
     }
 }
 
+// TODO: This is likely not needed anymore :)
 impl LexicalScope {
     pub fn new_root() -> Self {
         LexicalScope {
@@ -53,10 +54,6 @@ impl LexicalScope {
     }
     pub fn into_parent(self) -> Option<Self> {
         self.parent.map(|p| *p)
-    }
-
-    pub fn accessed_parent_vars(&self) -> im::HashMap<String, Arc<Type>> {
-        self.accessed_parent_vars.clone()
     }
 
     pub fn local_var<'a>(&mut self, name: &'a str) -> Result<LocalVariable<'a>, Error> {

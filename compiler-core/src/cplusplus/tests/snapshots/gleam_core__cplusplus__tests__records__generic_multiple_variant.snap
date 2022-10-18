@@ -27,18 +27,18 @@ private:
 
 class Left : public Either {
 public:
-  Left(? v) : Either(), m$v(v) {}
-  ? v() const { return m$v; }
+  Left(T$8 v) : Either(), m$v(v) {}
+  T$8 v() const { return m$v; }
 private:
-  ? m$v;
+  T$8 m$v;
 };
 
 class Right : public Either {
 public:
-  Right(? v) : Either(), m$v(v) {}
-  ? v() const { return m$v; }
+  Right(T$9 v) : Either(), m$v(v) {}
+  T$9 v() const { return m$v; }
 private:
-  ? m$v;
+  T$9 m$v;
 };
 
 } // namespace my

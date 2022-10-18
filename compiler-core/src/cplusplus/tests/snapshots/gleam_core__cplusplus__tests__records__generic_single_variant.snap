@@ -14,10 +14,10 @@ class Box;
 
 class Box {
 public:
-  Box(? inner) : m$inner(inner) {}
-  ? inner() const { return m$inner; }
+  Box(T$8 inner) : m$inner(inner) {}
+  T$8 inner() const { return m$inner; }
 private:
-  ? m$inner;
+  T$8 m$inner;
 };
 
 } // namespace my

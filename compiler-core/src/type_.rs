@@ -150,6 +150,20 @@ impl Type {
         }
     }
 
+    pub fn list_element_type(&self) -> Option<Arc<Self>> {
+        match self {
+            Self::App { module, name, args, .. } if "List" == name && module.is_empty() => 
+                args.first().map(|e| e.clone()),
+            Self::Var { type_ } => {
+                match type_.borrow().deref() {
+                    TypeVar::Link { type_ } => type_.list_element_type(),
+                    _ => None
+                }
+            },
+            _ => None,
+        }
+    }
+
     /// Get the args for the type if the type is a specific `Type::App`.
     /// Returns None if the type is not a `Type::App` or is an incorrect `Type:App`
     ///

@@ -5,9 +5,12 @@ use crate::cplusplus::scope::LexicalScope;
 use crate::cplusplus::INDENT;
 use crate::docvec;
 use crate::pretty::*;
-use crate::type_::Type;
+use crate::type_::{Type, TypeVar};
 use itertools::Itertools;
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    ops::Deref,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Declaration<'a> {
@@ -406,11 +409,10 @@ pub(crate) fn transform_type<'a, 'b>(type_: &'a Type) -> Document<'b> {
         "bool".to_doc()
     } else if type_.is_float() {
         "double".to_doc()
+    } else if type_.is_string() {
+        "gleam::String".to_doc()
     } else {
         match type_ {
-            Type::App { name, module, .. } if name == "String" && module.is_empty() => {
-                "gleam::String".to_doc()
-            }
             Type::App {
                 name,
                 public,
@@ -418,7 +420,13 @@ pub(crate) fn transform_type<'a, 'b>(type_: &'a Type) -> Document<'b> {
                 ..
             } => to_symbol(name, *public, module).surround("gleam::Ref<", ">"),
             Type::Fn { args, retrn } => function_type(retrn.clone(), args.clone()),
-            Type::Var { .. } => "?".to_doc(),
+            Type::Var { type_ } => {
+                match type_.borrow().deref() {
+                    TypeVar::Link { type_: typ } => transform_type(typ),
+                    TypeVar::Generic { id } => Document::String(format!("T${}", id)),
+                    _ => "?".to_doc(),
+                }
+            },
             Type::Tuple { .. } => "?".to_doc(),
         }
     };

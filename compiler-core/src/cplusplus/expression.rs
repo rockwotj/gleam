@@ -7,6 +7,7 @@ use crate::docvec;
 use crate::pretty::*;
 use crate::type_::{PatternConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use itertools::Itertools;
+use std::borrow::Borrow;
 use std::sync::Arc;
 use std::vec::Vec;
 
@@ -39,9 +40,7 @@ pub(crate) struct ExpressionGenerator {
 
 impl<'module> ExpressionGenerator {
     pub fn new(lexical_scope: LexicalScope) -> Self {
-        ExpressionGenerator {
-            lexical_scope,
-        }
+        ExpressionGenerator { lexical_scope }
     }
 
     pub fn generate_expr(
@@ -94,12 +93,46 @@ impl<'module> ExpressionGenerator {
             TypedExpr::Fn {
                 args, body, typ, ..
             } => self.generate_fn(typ, args, body)?,
+            TypedExpr::List {
+                typ,
+                elements,
+                tail,
+                ..
+            } => self.generate_list(typ, elements, tail)?,
             _ => {
                 return Err(Error::Unimplemented {
                     message: format!("{:?}", expr),
                 })
             }
         })
+    }
+
+    fn generate_list(
+        self: &mut Self,
+        typ: &'module Arc<Type>,
+        elements: &'module Vec<TypedExpr>,
+        tail: &'module Option<Box<TypedExpr>>,
+    ) -> Result<GeneratedExpr<'module>, Error> {
+        let mut list_eval = nil();
+        let mut element_results: Vec<Document<'module>> = vec![];
+        for element in elements {
+            let GeneratedExpr { eval, result } = self.generate_expr(element)?;
+            list_eval = list_eval.append(eval);
+            element_results.push(result);
+        }
+        println!("{:?}", tail);
+        let element_type = typ.list_element_type().expect("Unable to determine list element type");
+        println!("{:?}", element_type.as_ref());
+        let list_result = docvec![
+            "gleam::MakeList<",
+            transform_type(element_type.borrow()),
+            ">({",
+            Document::Vec(
+                Itertools::intersperse(element_results.into_iter(), break_(",", ", ")).collect()
+            ),
+            "})",
+        ];
+        return Ok(GeneratedExpr::new(list_eval, list_result));
     }
 
     fn generate_variable(
@@ -115,9 +148,7 @@ impl<'module> ExpressionGenerator {
             } => {
                 // Function pointers need to wrapped in a struct so that they can be
                 // interchangeable with functions defined as expressions.
-                GeneratedExpr::result(
-                    to_symbol(name, *public, module).surround("gleam::Ref(", ")"),
-                )
+                GeneratedExpr::result(to_symbol(name, *public, module).surround("gleam::Ref(", ")"))
             }
             ValueConstructor {
                 public,
@@ -219,9 +250,7 @@ impl<'module> ExpressionGenerator {
             line(),
             "}",
         ];
-        return Ok(GeneratedExpr::result(
-            lambda_decl,
-        ));
+        return Ok(GeneratedExpr::result(lambda_decl));
     }
 
     fn generate_call(
