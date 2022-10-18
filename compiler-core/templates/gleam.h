@@ -46,6 +46,47 @@ Function<Ref<ConstructorType>(Args...)> WrappedConstructor() {
   };
 }
 
+template <typename T>
+class List {
+  public:
+    List() {}
+    virtual ~List() { }
+};
+
+template <typename T>
+class NonEmptyList : public List<T> {
+  public:
+    NonEmptyList(const T& head, const Ref<List<T>>& tail) : List<T>(), head_(head), tail_(tail) {
+    }
+
+    const T& head() const {
+      return head_;
+    }
+
+    const Ref<List<T>>& tail() const {
+      return tail_;
+    }
+
+  private:
+    T head_;
+    Ref<List<T>> tail_;
+};
+
+template <typename T>
+class EmptyList : public List<T> {
+  public:
+    static INSTANCE: List<T> = MakeRef<EmptyList<T>>();
+};
+
+template <typename T>
+Ref<List<T>> MakeList(std::initializer_list<T> list) {
+  Ref<List<T>> result = EmptyList::INSTANCE;
+  for (auto it = std::rbegin(list); it != std::rend(list); ++it) {
+    result = MakeRef<NonEmptyList>(*it, result);
+  }
+  return result;
+}
+
 }  // namespace gleam
 
 #endif // GLEAM_PRELUDE_H_
