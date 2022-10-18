@@ -408,15 +408,16 @@ pub(crate) fn transform_type<'a, 'b>(type_: &'a Type) -> Document<'b> {
         "double".to_doc()
     } else {
         match type_ {
+            Type::App { name, module, .. } if name == "String" && module.is_empty() => {
+                "gleam::String".to_doc()
+            }
             Type::App {
                 name,
                 public,
                 module,
                 ..
             } => to_symbol(name, *public, module).surround("gleam::Ref<", ">"),
-            Type::Fn { args, retrn } => {
-                function_type(retrn.clone(), args.clone())
-            }
+            Type::Fn { args, retrn } => function_type(retrn.clone(), args.clone()),
             Type::Var { .. } => "?".to_doc(),
             Type::Tuple { .. } => "?".to_doc(),
         }

@@ -16,11 +16,11 @@ int64_t next_age(gleam::Ref<::my::module::Person> person);
 
 class Person {
 public:
-  Person(gleam::Ref<gleam::String> name, int64_t age) : m$name(name), m$age(age) {}
-  gleam::Ref<gleam::String> name() const { return m$name; }
+  Person(gleam::String name, int64_t age) : m$name(name), m$age(age) {}
+  gleam::String name() const { return m$name; }
   int64_t age() const { return m$age; }
 private:
-  gleam::Ref<gleam::String> m$name;
+  gleam::String m$name;
   int64_t m$age;
 };
 

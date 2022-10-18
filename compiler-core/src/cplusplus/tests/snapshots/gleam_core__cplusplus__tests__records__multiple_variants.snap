@@ -27,10 +27,10 @@ private:
 
 class LoggedIn : public User {
 public:
-  LoggedIn(gleam::Ref<gleam::String> name) : User(), m$name(name) {}
-  gleam::Ref<gleam::String> name() const { return m$name; }
+  LoggedIn(gleam::String name) : User(), m$name(name) {}
+  gleam::String name() const { return m$name; }
 private:
-  gleam::Ref<gleam::String> m$name;
+  gleam::String m$name;
 };
 
 class Guest : public User {

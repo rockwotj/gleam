@@ -14,10 +14,10 @@ class Ip;
 
 class Ip {
 public:
-  Ip(gleam::Ref<gleam::String> x$0) : m$0(x$0) {}
-  gleam::Ref<gleam::String> x$0() const { return m$0; }
+  Ip(gleam::String x$0) : m$0(x$0) {}
+  gleam::String x$0() const { return m$0; }
 private:
-  gleam::Ref<gleam::String> m$0;
+  gleam::String m$0;
 };
 
 } // namespace my

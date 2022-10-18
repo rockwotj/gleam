@@ -12,14 +12,14 @@ namespace module {
 
 class Person;
 
-gleam::Ref<::my::module::Person> new(gleam::Ref<gleam::String> name);
+gleam::Ref<::my::module::Person> new(gleam::String name);
 
 class Person {
 public:
-  Person(gleam::Ref<gleam::String> name) : m$name(name) {}
-  gleam::Ref<gleam::String> name() const { return m$name; }
+  Person(gleam::String name) : m$name(name) {}
+  gleam::String name() const { return m$name; }
 private:
-  gleam::Ref<gleam::String> m$name;
+  gleam::String m$name;
 };
 
 } // namespace my
@@ -33,8 +33,8 @@ private:
 namespace my {
 namespace module {
 
-gleam::Ref<::my::module::Person> new(gleam::Ref<gleam::String> name) {
-  gleam::Function<gleam::Ref<::my::module::Person>, gleam::Ref<gleam::String>> constructor_fn = gleam::WrappedConstructor<::my::module::Person, gleam::Ref<gleam::String>>();
+gleam::Ref<::my::module::Person> new(gleam::String name) {
+  gleam::Function<gleam::Ref<::my::module::Person>, gleam::String> constructor_fn = gleam::WrappedConstructor<::my::module::Person, gleam::String>();
   return constructor_fn(name);
 };
 

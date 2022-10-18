@@ -5,17 +5,18 @@
 #include <stdint.h>
 #include <memory>
 #include <functional>
+#include <initializer_list>
 
 /// This namespace defines the prelude for Native Gleam.
 namespace gleam {
 
-using String = std::string;
 template<typename T>
 using Ref = std::shared_ptr<T>;
 template<typename T, typename... Args>
 Ref<T> MakeRef(Args&&... args) {
   return std::make_shared<T>(args...);
 }
+using String = Ref<std::string>;
 
 /// A base type for all anonymous or referenced functions declared in Native Gleam
 ///

@@ -18,16 +18,16 @@ class Dog;
 
 class Animal {
 public:
-  Animal(gleam::Ref<gleam::String> name) : m$name(name) {}
+  Animal(gleam::String name) : m$name(name) {}
   virtual ~Animal() {}
-  gleam::Ref<gleam::String> name() const { return m$name; }
+  gleam::String name() const { return m$name; }
 private:
-  gleam::Ref<gleam::String> m$name;
+  gleam::String m$name;
 };
 
 class Cat : public Animal {
 public:
-  Cat(gleam::Ref<gleam::String> name, bool likes_milk) : Animal(name), m$likes_milk(likes_milk) {}
+  Cat(gleam::String name, bool likes_milk) : Animal(name), m$likes_milk(likes_milk) {}
   bool likes_milk() const { return m$likes_milk; }
 private:
   bool m$likes_milk;
@@ -35,7 +35,7 @@ private:
 
 class Dog : public Animal {
 public:
-  Dog(gleam::Ref<gleam::String> name, bool barks) : Animal(name), m$barks(barks) {}
+  Dog(gleam::String name, bool barks) : Animal(name), m$barks(barks) {}
   bool barks() const { return m$barks; }
 private:
   bool m$barks;
