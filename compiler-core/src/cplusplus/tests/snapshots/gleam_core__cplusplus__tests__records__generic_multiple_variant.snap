@@ -19,6 +19,7 @@ class Right;
 class Either {
 public:
   Either() {}
+  virtual ~Either() {}
   
 private:
   

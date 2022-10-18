@@ -19,6 +19,7 @@ class Dog;
 class Animal {
 public:
   Animal(gleam::Ref<gleam::String> name) : m$name(name) {}
+  virtual ~Animal() {}
   gleam::Ref<gleam::String> name() const { return m$name; }
 private:
   gleam::Ref<gleam::String> m$name;

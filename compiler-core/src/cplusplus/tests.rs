@@ -23,7 +23,7 @@ macro_rules! assert_cpp {
         // place.
         let _ = modules.insert("gleam".to_string(), build_prelude(&ids));
         let ast = infer_module(
-            crate::build::Target::CPlusPlus,
+            crate::build::Target::Native,
             &ids,
             ast,
             Origin::Src,

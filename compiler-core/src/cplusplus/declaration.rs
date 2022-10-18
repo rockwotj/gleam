@@ -222,7 +222,7 @@ fn record_declarations<'a>(
     };
     let decls: Vec<Document<'a>> = variants
         .iter()
-        .map(|variant| record_declaration(&variant.name, &variant.arguments, &superclass))
+        .map(|variant| record_declaration(&variant.name, &variant.arguments, &superclass, false))
         .collect();
     vec![
         superclass
@@ -231,6 +231,7 @@ fn record_declarations<'a>(
                     &c.name,
                     &c.shared_arguments.into_iter().map(|(_, v)| v).collect_vec(),
                     &None,
+                    true,
                 )]
             })
             .unwrap_or(vec![]),
@@ -250,6 +251,7 @@ fn record_declaration<'a, 'b>(
     variant_name: &'a String,
     args: &'a Vec<RecordConstructorArg<Arc<Type>>>,
     supertype: &'a Option<SuperClass>,
+    is_super_type: bool,
 ) -> Document<'b> {
     let inheritance = match supertype {
         None => "".to_doc(),
@@ -348,6 +350,11 @@ fn record_declaration<'a, 'b>(
             member_initialization,
             " {}",
             line(),
+            if is_super_type {
+                docvec!["virtual ~", Document::String(variant_name.clone()), "() {}", line()]
+            } else {
+                nil()
+            },
             accessors
         ]
         .nest(INDENT)

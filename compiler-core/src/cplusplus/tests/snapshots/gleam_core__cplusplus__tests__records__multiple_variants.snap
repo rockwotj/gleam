@@ -19,6 +19,7 @@ class Guest;
 class User {
 public:
   User() {}
+  virtual ~User() {}
   
 private:
   
