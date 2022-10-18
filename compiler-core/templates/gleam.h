@@ -79,8 +79,8 @@ class EmptyList : public List<T> {
 };
 
 template <typename T>
-Ref<List<T>> MakeList(std::initializer_list<T> list) {
-  Ref<List<T>> result = EmptyList::INSTANCE;
+Ref<List<T>> MakeList(std::initializer_list<T> list, Ref<List<T>> init = EmptyList::INSTANCE) {
+  Ref<List<T>> result = init;
   for (auto it = std::rbegin(list); it != std::rend(list); ++it) {
     result = MakeRef<NonEmptyList>(*it, result);
   }

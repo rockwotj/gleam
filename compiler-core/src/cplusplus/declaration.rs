@@ -195,7 +195,7 @@ fn record_declarations<'a>(
     variants: &'a Vec<RecordConstructor<Arc<Type>>>,
 ) -> Vec<Document<'a>> {
     let superclass = if variants.len() > 1 {
-        let (first, rest) = variants.split_first().unwrap();
+        let (first, rest) = variants.split_first().expect("There must be at least one struct variant");
         let shared_arguments: Vec<(String, RecordConstructorArg<Arc<Type>>)> = first
             .arguments
             .iter()

@@ -17,6 +17,9 @@ pub struct GeneratedExpr<'a> {
 }
 
 impl<'a> GeneratedExpr<'a> {
+    fn nil() -> GeneratedExpr<'a> {
+        return GeneratedExpr { eval: nil(), result: nil() };
+    }
     fn new(eval: Document<'a>, result: Document<'a>) -> GeneratedExpr<'a> {
         return GeneratedExpr { eval, result };
     }
@@ -120,9 +123,12 @@ impl<'module> ExpressionGenerator {
             list_eval = list_eval.append(eval);
             element_results.push(result);
         }
-        println!("{:?}", tail);
         let element_type = typ.list_element_type().expect("Unable to determine list element type");
-        println!("{:?}", element_type.as_ref());
+        let GeneratedExpr { eval: tail_eval, result: tail_result } = match tail {
+            Some(t) => self.generate_expr(t)?,
+            None => GeneratedExpr::nil(),
+        };
+        list_eval = list_eval.append(tail_eval);
         let list_result = docvec![
             "gleam::MakeList<",
             transform_type(element_type.borrow()),
@@ -130,7 +136,13 @@ impl<'module> ExpressionGenerator {
             Document::Vec(
                 Itertools::intersperse(element_results.into_iter(), break_(",", ", ")).collect()
             ),
-            "})",
+            "}",
+            if tail_result.is_empty() {
+                nil()
+            } else {
+                break_(",", ", ").append(tail_result)
+            },
+            ")",
         ];
         return Ok(GeneratedExpr::new(list_eval, list_result));
     }

@@ -9,3 +9,13 @@ pub fn palindrome(x: String, y: String, z: String) -> List(String) {
 }"#
     );
 }
+
+#[test]
+fn cons() {
+    assert_cpp!(
+        r#"
+pub fn cons(head: String, tail: List(String)) -> List(String) {
+    [head, ..tail]
+}"#
+    );
+}
