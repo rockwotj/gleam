@@ -24,7 +24,7 @@ pub fn wrap_with_namespace_scope<'a>(doc: Document<'a>, module: &'a TypedModule)
 
 pub fn wrap_with_include_guards<'a>(doc: Document<'a>, module: &'a TypedModule) -> Document<'a> {
     let module_name = module.name.join("_").to_shouty_snake_case();
-    let name_doc = Document::String(module_name.clone());
+    let name_doc = Document::String(module_name);
     let package_name = module.type_info.package.to_shouty_snake_case();
     let package_doc = Document::String(package_name);
     let head = docvec!(

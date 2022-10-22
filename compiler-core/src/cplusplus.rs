@@ -25,29 +25,6 @@ const INDENT: isize = 2;
 pub const PRELUDE_HEADER: &str = include_str!("../templates/gleam.h");
 pub const PRELUDE_IMPL: &str = include_str!("../templates/gleam.cc");
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum CppStatementType {
-    Alias,
-    Function,
-    Class,
-    Include,
-    Constant,
-}
-
-impl CppStatementType {
-    fn classify(statement: &TypedStatement) -> CppStatementType {
-        match statement {
-            TypedStatement::Fn { .. } => CppStatementType::Function,
-            TypedStatement::TypeAlias { .. } => CppStatementType::Alias,
-            TypedStatement::CustomType { .. } => CppStatementType::Class,
-            TypedStatement::ExternalFn { .. } => CppStatementType::Function,
-            TypedStatement::ExternalType { .. } => CppStatementType::Alias,
-            TypedStatement::Import { .. } => CppStatementType::Include,
-            TypedStatement::ModuleConstant { .. } => CppStatementType::Constant,
-        }
-    }
-}
-
 pub fn module_header(
     module: &TypedModule,
     _line_numbers: &LineNumbers,
@@ -60,7 +37,7 @@ pub fn module_header(
     let mut forward_declarations: Vec<Declaration<'_>> = module
         .statements
         .iter()
-        .map(|s| forward_declarations(s))
+        .map(forward_declarations)
         .flatten_ok()
         .try_collect()
         .map_err(|err| Error::CPlusPlus {
@@ -78,7 +55,7 @@ pub fn module_header(
     let mut declarations: Vec<Declaration<'_>> = module
         .statements
         .iter()
-        .map(|s| declarations(s))
+        .map(declarations)
         .flatten_ok()
         .try_collect()
         .map_err(|err| Error::CPlusPlus {
@@ -106,7 +83,7 @@ pub fn module_header(
     document = meta::wrap_with_namespace_scope(document, module);
     document = docvec!("#include <gleam.h>", line()).append(document);
     for import_name in collect_imports(module) {
-        let import = if import_name.starts_with("<") && import_name.ends_with(">") {
+        let import = if import_name.starts_with('<') && import_name.ends_with('>') {
             Document::String(import_name)
         } else {
             docvec!("\"", Document::String(import_name), "\"")
@@ -129,7 +106,7 @@ pub fn module_impl(
     let declarations: Vec<Document<'_>> = module
         .statements
         .iter()
-        .map(|s| implementation(s))
+        .map(implementation)
         .filter_map_ok(std::convert::identity)
         .try_collect()
         .map_err(|err| Error::CPlusPlus {

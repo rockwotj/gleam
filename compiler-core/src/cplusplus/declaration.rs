@@ -16,8 +16,9 @@ use std::{
 pub(crate) enum Declaration<'a> {
     Class { doc: Document<'a>, public: bool },
     Fn { doc: Document<'a>, public: bool },
-    Alias { doc: Document<'a>, public: bool },
-    Constant { doc: Document<'a>, public: bool },
+    // TODO: Support me!
+    // Alias { doc: Document<'a>, public: bool },
+    // Constant { doc: Document<'a>, public: bool },
 }
 
 impl<'a> Declaration<'a> {
@@ -25,24 +26,24 @@ impl<'a> Declaration<'a> {
         *match self {
             Declaration::Class { public, .. } => public,
             Declaration::Fn { public, .. } => public,
-            Declaration::Alias { public, .. } => public,
-            Declaration::Constant { public, .. } => public,
+            // Declaration::Alias { public, .. } => public,
+            // Declaration::Constant { public, .. } => public,
         }
     }
     pub fn into_doc(self) -> Document<'a> {
         match self {
             Declaration::Class { doc, .. } => doc,
             Declaration::Fn { doc, .. } => doc,
-            Declaration::Alias { doc, .. } => doc,
-            Declaration::Constant { doc, .. } => doc,
+            // Declaration::Alias { doc, .. } => doc,
+            // Declaration::Constant { doc, .. } => doc,
         }
     }
     pub fn type_order(&self) -> i32 {
         match self {
-            Declaration::Constant { .. } => 1,
             Declaration::Class { .. } => 2,
-            Declaration::Alias { .. } => 3,
             Declaration::Fn { .. } => 4,
+            // Declaration::Constant { .. } => 1,
+            // Declaration::Alias { .. } => 3,
         }
     }
 }
@@ -83,7 +84,7 @@ pub(crate) fn implementation(statement: &TypedStatement) -> Result<Option<Docume
     })
 }
 
-pub(crate) fn function_args(args: &Vec<Arg<Arc<Type>>>) -> Document<'_> {
+pub(crate) fn function_args(args: &[Arg<Arc<Type>>]) -> Document<'_> {
     let mut i = 0;
     let args = args.iter().map(|arg| {
         docvec!(
@@ -108,12 +109,12 @@ pub(crate) fn function_args(args: &Vec<Arg<Arc<Type>>>) -> Document<'_> {
 }
 
 fn function_signature<'a>(
-    name: &'a String,
-    args: &'a Vec<Arg<Arc<Type>>>,
+    name: &'a str,
+    args: &'a [Arg<Arc<Type>>],
     return_type: &'a Arc<Type>,
 ) -> Document<'a> {
-    let mut decl = docvec!(transform_type(&return_type), " ");
-    decl = decl.append(Document::String(name.clone()));
+    let mut decl = docvec!(transform_type(return_type), " ");
+    decl = decl.append(Document::String(name.to_owned()));
     return decl.append(function_args(args).surround("(", ")"));
 }
 
@@ -191,7 +192,7 @@ pub(crate) fn declarations(statement: &TypedStatement) -> Result<Vec<Declaration
 }
 
 fn record_declarations<'a>(
-    name: &'a String,
+    name: &'a str,
     variants: &'a Vec<RecordConstructor<Arc<Type>>>,
 ) -> Vec<Document<'a>> {
     let superclass = if variants.len() > 1 {
@@ -216,7 +217,7 @@ fn record_declarations<'a>(
             .map(|(name, _)| name.clone())
             .collect();
         Some(SuperClass {
-            name: name.clone(),
+            name: name.to_owned(),
             shared_arguments,
             shared_argument_names,
         })
@@ -237,7 +238,7 @@ fn record_declarations<'a>(
                     true,
                 )]
             })
-            .unwrap_or(vec![]),
+            .unwrap_or_default(),
         decls,
     ]
     .concat()
@@ -251,8 +252,8 @@ struct SuperClass {
 }
 
 fn record_declaration<'a, 'b>(
-    variant_name: &'a String,
-    args: &'a Vec<RecordConstructorArg<Arc<Type>>>,
+    variant_name: &'a str,
+    args: &'a [RecordConstructorArg<Arc<Type>>],
     supertype: &'a Option<SuperClass>,
     is_super_type: bool,
 ) -> Document<'b> {
@@ -339,14 +340,14 @@ fn record_declaration<'a, 'b>(
     let members = Document::Vec(Itertools::intersperse(members.into_iter(), line()).collect());
     docvec![
         "class ",
-        Document::String(variant_name.clone()),
+        Document::String(variant_name.to_owned()),
         inheritance,
         " {",
         line(),
         "public:",
         docvec![
             line(),
-            Document::String(variant_name.clone()),
+            Document::String(variant_name.to_owned()),
             "(",
             constructor_args,
             ")",
@@ -354,7 +355,7 @@ fn record_declaration<'a, 'b>(
             " {}",
             line(),
             if is_super_type {
-                docvec!["virtual ~", Document::String(variant_name.clone()), "() {}", line()]
+                docvec!["virtual ~", Document::String(variant_name.to_owned()), "() {}", line()]
             } else {
                 nil()
             },
@@ -378,16 +379,16 @@ pub(crate) fn function_type<'a>(result: Arc<Type>, args: Vec<Arc<Type>>) -> Docu
     ];
     doc = doc.append(Document::Vec(
         Itertools::intersperse(
-            args.iter().map(|arg| transform_type(&arg)),
+            args.iter().map(|arg| transform_type(arg)),
             break_(",", ", "),
         )
         .collect(),
     ));
-    return doc.append(">");
+    doc.append(">")
 }
 
 pub(crate) fn to_symbol<'a, 'b>(
-    name: &'a String,
+    name: &'a str,
     public: bool,
     module: &'a Vec<String>,
 ) -> Document<'b> {
@@ -399,7 +400,7 @@ pub(crate) fn to_symbol<'a, 'b>(
     if !public {
         doc = doc.append("_private::");
     }
-    doc.append(Document::String(name.clone()))
+    doc.append(Document::String(name.to_owned()))
 }
 
 pub(crate) fn transform_type<'a, 'b>(type_: &'a Type) -> Document<'b> {
@@ -424,7 +425,7 @@ pub(crate) fn transform_type<'a, 'b>(type_: &'a Type) -> Document<'b> {
                 match type_.borrow().deref() {
                     TypeVar::Link { type_: typ } => transform_type(typ),
                     TypeVar::Generic { id } => Document::String(format!("T${}", id)),
-                    _ => "?".to_doc(),
+                    TypeVar::Unbound { .. } => "?".to_doc(),
                 }
             },
             Type::Tuple { .. } => "?".to_doc(),

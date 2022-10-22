@@ -45,7 +45,7 @@ impl LexicalScope {
             parent: None,
         }
     }
-    pub fn into_child<'child>(self) -> Self {
+    pub fn into_child(self) -> Self {
         LexicalScope {
             current_scope_vars: im::HashMap::new(),
             accessed_parent_vars: im::HashMap::new(),
@@ -89,7 +89,6 @@ impl LexicalScope {
                 typ: typ.clone(),
             },
         );
-        // Cannot fail because we just insert into the map.
-        self.local_var(name).unwrap()
+        self.local_var(name).expect("This cannot failure because we just inserted this into the map")
     }
 }

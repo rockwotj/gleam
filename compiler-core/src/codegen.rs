@@ -241,7 +241,7 @@ impl<'a> CPlusPlus<'a> {
             self.module_impl(writer, module, &mod_name)?;
         }
         self.write_prelude(writer)?;
-        return Ok(());
+        Ok(())
     }
 
     fn module_header(

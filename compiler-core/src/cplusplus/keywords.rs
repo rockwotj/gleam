@@ -8,7 +8,7 @@ pub fn to_identifier(identifier: String) -> String {
 
 fn is_cplus_plus_keyword(name: &str) -> bool {
     // See: https://en.cppreference.com/w/cpp/keyword
-    return matches!(
+    matches!(
         name,
         "alignas"
             | "alignof"
@@ -107,5 +107,5 @@ fn is_cplus_plus_keyword(name: &str) -> bool {
             | "while"
             | "xor"
             | "xor_eq"
-    );
+    )
 }

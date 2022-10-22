@@ -18,22 +18,22 @@ pub struct GeneratedExpr<'a> {
 
 impl<'a> GeneratedExpr<'a> {
     fn nil() -> GeneratedExpr<'a> {
-        return GeneratedExpr { eval: nil(), result: nil() };
+        GeneratedExpr { eval: nil(), result: nil() }
     }
     fn new(eval: Document<'a>, result: Document<'a>) -> GeneratedExpr<'a> {
-        return GeneratedExpr { eval, result };
+        GeneratedExpr { eval, result }
     }
     fn result(result: Document<'_>) -> GeneratedExpr<'_> {
-        return GeneratedExpr {
+        GeneratedExpr {
             eval: nil(),
             result,
-        };
+        }
     }
-    fn of(result: &String) -> GeneratedExpr<'_> {
-        return GeneratedExpr {
+    fn of(result: &str) -> GeneratedExpr<'_> {
+        GeneratedExpr {
             eval: nil(),
-            result: Document::String(result.clone()),
-        };
+            result: Document::String(result.to_owned()),
+        }
     }
 }
 
@@ -47,7 +47,7 @@ impl<'module> ExpressionGenerator {
     }
 
     pub fn generate_expr(
-        self: &mut Self,
+        &mut self,
         expr: &'module TypedExpr,
     ) -> Result<GeneratedExpr<'module>, Error> {
         Ok(match expr {
@@ -111,9 +111,9 @@ impl<'module> ExpressionGenerator {
     }
 
     fn generate_list(
-        self: &mut Self,
+        &mut self,
         typ: &'module Arc<Type>,
-        elements: &'module Vec<TypedExpr>,
+        elements: &'module [TypedExpr],
         tail: &'module Option<Box<TypedExpr>>,
     ) -> Result<GeneratedExpr<'module>, Error> {
         let mut list_eval = nil();
@@ -148,8 +148,8 @@ impl<'module> ExpressionGenerator {
     }
 
     fn generate_variable(
-        self: &mut Self,
-        name: &'module String,
+        &mut self,
+        name: &'module str,
         constructor: &'module ValueConstructor,
     ) -> Result<GeneratedExpr<'module>, Error> {
         Ok(match constructor {
@@ -172,12 +172,11 @@ impl<'module> ExpressionGenerator {
                         ..
                     },
                 type_,
-                ..
             } if *arity > 0 => {
                 let (args, _) = type_.fn_types().ok_or_else(|| Error::InternalError {
                     message: format!("Unexpected type for record constructor: {:?}", type_),
                 })?;
-                let module: Vec<String> = module.split("/").map(|s| s.to_string()).collect();
+                let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
                 let arg_types = Document::Vec(
                     Itertools::intersperse(
                         args.into_iter().map(|arg| transform_type(&arg)),
@@ -200,7 +199,7 @@ impl<'module> ExpressionGenerator {
                 ..
             } => {
                 // TODO: Should/can we generate singletons?
-                let module: Vec<String> = module.split("/").map(|s| s.to_string()).collect();
+                let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
                 GeneratedExpr::result(docvec![
                     "gleam::MakeRef<",
                     to_symbol(name, *public, &module),
@@ -212,25 +211,25 @@ impl<'module> ExpressionGenerator {
     }
 
     fn generate_record_access(
-        self: &mut Self,
-        label: &'module String,
-        record: &'module Box<TypedExpr>,
+        &mut self,
+        label: &'module str,
+        record: &'module TypedExpr,
     ) -> Result<GeneratedExpr<'module>, Error> {
-        let generated_record = self.generate_expr(record.as_ref())?;
+        let generated_record = self.generate_expr(record)?;
 
         Ok(GeneratedExpr::new(
             generated_record.eval,
             generated_record
                 .result
-                .append(docvec!["->", Document::String(label.clone()), "()",]),
+                .append(docvec!["->", Document::String(label.to_owned()), "()",]),
         ))
     }
 
     fn generate_fn(
-        self: &mut Self,
+        &mut self,
         typ: &'module Arc<Type>,
         args: &'module Vec<Arg<Arc<Type>>>,
-        body: &'module Box<TypedExpr>,
+        body: &'module TypedExpr,
     ) -> Result<GeneratedExpr<'module>, Error> {
         let (_, result_type) = typ.fn_types().ok_or(Error::InternalError {
             message: format!("Unexpected type for function: {:?}", typ),
@@ -241,7 +240,7 @@ impl<'module> ExpressionGenerator {
                 let _ = self.lexical_scope.declare_local_var(name, &arg.type_);
             }
         }
-        let GeneratedExpr { eval, result } = self.generate_expr(body.as_ref())?;
+        let GeneratedExpr { eval, result } = self.generate_expr(body)?;
         self.lexical_scope =
             self.lexical_scope
                 .clone()
@@ -266,11 +265,11 @@ impl<'module> ExpressionGenerator {
     }
 
     fn generate_call(
-        self: &mut Self,
-        fun: &'module Box<TypedExpr>,
-        args: &'module Vec<CallArg<TypedExpr>>,
+        &mut self,
+        fun: &'module TypedExpr,
+        args: &'module [CallArg<TypedExpr>],
     ) -> Result<GeneratedExpr<'module>, Error> {
-        let call_fn = match fun.as_ref() {
+        let call_fn = match fun {
             TypedExpr::Var {
                 constructor:
                     ValueConstructor {
@@ -289,11 +288,11 @@ impl<'module> ExpressionGenerator {
                     },
                 ..
             } => {
-                let module: Vec<String> = module.split("/").map(|s| s.to_string()).collect();
+                let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
                 GeneratedExpr::result(to_symbol(name, *public, &module))
             }
             _ => {
-                let GeneratedExpr { eval, result } = self.generate_expr(&fun)?;
+                let GeneratedExpr { eval, result } = self.generate_expr(fun)?;
                 GeneratedExpr::new(eval, result)
             }
         };
@@ -314,7 +313,7 @@ impl<'module> ExpressionGenerator {
     }
 
     fn generate_sequence(
-        self: &mut Self,
+        &mut self,
         expressions: &'module Vec<TypedExpr>,
     ) -> Result<GeneratedExpr<'module>, Error> {
         let mut seq = nil();
@@ -333,8 +332,8 @@ impl<'module> ExpressionGenerator {
     }
 
     fn generate_assignment(
-        self: &mut Self,
-        value: &'module Box<TypedExpr>,
+        &mut self,
+        value: &'module TypedExpr,
         typ: &'module Arc<Type>,
         pattern: &'module Pattern<PatternConstructor, Arc<Type>>,
     ) -> Result<GeneratedExpr<'module>, Error> {
@@ -352,17 +351,17 @@ impl<'module> ExpressionGenerator {
                 ],
             });
         }
-        return Err(Error::Unimplemented {
+        Err(Error::Unimplemented {
             message: format!("Unsupported pattern assignment: {:?}", pattern),
-        });
+        })
     }
 
     fn generate_lazy_bin_op(
-        self: &mut Self,
+        &mut self,
         typ: &'module Arc<Type>,
         name: &'module BinOp,
-        left: &'module Box<TypedExpr>,
-        right: &'module Box<TypedExpr>,
+        left: &'module TypedExpr,
+        right: &'module TypedExpr,
     ) -> Result<GeneratedExpr<'module>, Error> {
         // TODO: There are cases when this can be simplified to a "normal" || or && in C++, but then
         // this also needs to be handled in the wrapping logic.
@@ -405,10 +404,10 @@ impl<'module> ExpressionGenerator {
     }
 
     fn generate_eager_binop(
-        self: &mut Self,
+        &mut self,
         name: &'module BinOp,
-        left: &'module Box<TypedExpr>,
-        right: &'module Box<TypedExpr>,
+        left: &'module TypedExpr,
+        right: &'module TypedExpr,
     ) -> Result<GeneratedExpr<'module>, Error> {
         let left_expr = self.generate_expr(left)?;
         let right_expr = self.generate_expr(right)?;

@@ -190,6 +190,9 @@ pub enum Error {
         package: String,
         build_tools: Vec<String>,
     },
+
+    #[error("Native compilation is not yet supported")]
+    CPlusPlusCompilationNotImplemented,
 }
 
 impl Error {
@@ -2292,6 +2295,15 @@ issue in our tracker: https://github.com/gleam-lang/gleam/issues",
                 Diagnostic {
                     title: "Unsupported build tool".into(),
                     text,
+                    hint: None,
+                    location: None,
+                    level: Level::Error,
+                }
+            }
+            Error::CPlusPlusCompilationNotImplemented  => { 
+                Diagnostic {
+                    title: "Native compilation is not yet supported".into(),
+                    text: "Native gleam is still in development and is not ready to face a C++ compiler 😀".into(),
                     hint: None,
                     location: None,
                     level: Level::Error,

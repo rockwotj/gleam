@@ -153,7 +153,7 @@ impl Type {
     pub fn list_element_type(&self) -> Option<Arc<Self>> {
         match self {
             Self::App { module, name, args, .. } if "List" == name && module.is_empty() => 
-                args.first().map(|e| e.clone()),
+                args.first().cloned(),
             Self::Var { type_ } => {
                 match type_.borrow().deref() {
                     TypeVar::Link { type_ } => type_.list_element_type(),
