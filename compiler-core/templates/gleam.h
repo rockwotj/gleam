@@ -51,6 +51,8 @@ class List {
   public:
     List() {}
     virtual ~List() { }
+
+    static Ref<List<T>> empty();
 };
 
 template <typename T>
@@ -73,16 +75,21 @@ class NonEmptyList : public List<T> {
 };
 
 template <typename T>
-class EmptyList : public List<T> {
-  public:
-    static List<T> INSTANCE = MakeRef<EmptyList<T>>();
-};
+class EmptyList : public List<T> {};
 
 template <typename T>
-Ref<List<T>> MakeList(std::initializer_list<T> list, Ref<List<T>> init = EmptyList<T>::INSTANCE) {
+Ref<List<T>> List<T>::empty() {
+	static Ref<List<T>> instance = []() {
+		return MakeRef<EmptyList<T>>();
+	}();
+	return instance;
+}
+
+template <typename T>
+Ref<List<T>> MakeList(std::initializer_list<T> list, Ref<List<T>> init = List<T>::empty()) {
   Ref<List<T>> result = init;
   for (auto it = std::rbegin(list); it != std::rend(list); ++it) {
-    result = MakeRef<NonEmptyList>(*it, result);
+    result = MakeRef<NonEmptyList<T>>(*it, result);
   }
   return result;
 }

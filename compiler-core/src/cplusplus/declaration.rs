@@ -7,7 +7,7 @@ use crate::docvec;
 use crate::pretty::*;
 use crate::type_::{Type, TypeVar};
 use itertools::Itertools;
-use std::{ops::Deref, sync::Arc};
+use std::{cell::RefCell, ops::Deref, sync::Arc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Declaration<'a> {
@@ -206,15 +206,9 @@ fn generate_template_declaration<'a, 'b>(typed_parameters: &'a [Arc<Type>]) -> D
     if generic_args.is_empty() {
         nil()
     } else {
-        Document::Vec(
-            Itertools::intersperse(
-                generic_args.into_iter(),
-                break_(",", ", "),
-            )
-            .collect(),
-        )
-        .surround("template <", ">")
-        .append(line())
+        Document::Vec(Itertools::intersperse(generic_args.into_iter(), break_(",", ", ")).collect())
+            .surround("template <", ">")
+            .append(line())
     }
 }
 
@@ -222,20 +216,14 @@ fn generate_template_args<'a, 'b>(typed_parameters: &'a [Arc<Type>]) -> Document
     let generic_args: Vec<_> = typed_parameters
         .iter()
         .flat_map(|p| p.type_vars())
-        .map(|type_var| transform_type(&Type::Var {type_: type_var} ))
+        .map(|type_var| transform_type(&Type::Var { type_: type_var }))
         .unique()
         .collect();
     if generic_args.is_empty() {
         nil()
     } else {
-        Document::Vec(
-            Itertools::intersperse(
-                generic_args.into_iter(),
-                break_(",", ", "),
-            )
-            .collect(),
-        )
-        .surround("<", ">")
+        Document::Vec(Itertools::intersperse(generic_args.into_iter(), break_(",", ", ")).collect())
+            .surround("<", ">")
     }
 }
 
@@ -498,7 +486,19 @@ pub(crate) fn transform_type<'a, 'b>(type_: &'a Type) -> Document<'b> {
                 public,
                 module,
                 args,
-            } => to_symbol(name, *public, module, args).surround("gleam::Ref<", ">"),
+            } => {
+                // Sort of a hack - but force the specification here for template args.
+                let linked: Vec<_> = args
+                    .iter()
+                    .map(|a| match a.as_ref() {
+                        Type::Var { .. } => a.clone(),
+                        _ => Arc::new(Type::Var {
+                            type_: Arc::new(RefCell::new(TypeVar::Link { type_: a.clone() })),
+                        }),
+                    })
+                    .collect();
+                to_symbol(name, *public, module, &linked).surround("gleam::Ref<", ">")
+            }
             Type::Fn { args, retrn } => function_type(retrn.clone(), args.clone()),
             Type::Var { type_ } => match type_.borrow().deref() {
                 TypeVar::Link { type_: typ } => transform_type(typ),

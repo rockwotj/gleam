@@ -1,29 +1,13 @@
-
-pub fn add(a: Int, b: Int) -> Int {
-  a + b + a
-}
-
 pub type Box(inner_type) {
   Box(inner: inner_type)
 }
 
-pub fn make_box(v: inner_type) -> Box(inner_type) {
-  Box(v)
+pub fn make_string_box(v: String) -> Box(String) {
+  let r = Box(v)
+  r
 }
 
-pub type Either(left, right) {
-  Left(inner: left)
-  Right(inner: right)
-}
-
-pub fn make_left(v: left) {
-  Left(v)
-}
-
-pub fn make_right(v: right) {
-  Right(v)
-}
-
-pub fn main() {
-  1;
+pub fn make_string_list(v: String) -> List(String) {
+  let r = [v]
+  r
 }

@@ -18,6 +18,4 @@ watch:
 compile:
 	clang++ -Wall -std=c++17 \
 		-I output/dist/ \
-		-fPIC \
-		output/dist/hello_world.cc \
-		-o hello_world.o
+		-c output/dist/hello_world.cc
