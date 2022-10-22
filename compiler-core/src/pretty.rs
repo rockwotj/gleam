@@ -127,7 +127,7 @@ pub fn join<'a>(
     concat(Itertools::intersperse(docs.into_iter(), separator))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Document<'a> {
     /// A mandatory linebreak
     Line(usize),
@@ -216,7 +216,7 @@ fn fits(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BreakKind {
     Flex,
     Strict,

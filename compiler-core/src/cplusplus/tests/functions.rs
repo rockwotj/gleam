@@ -71,3 +71,17 @@ fn wrapped(x) {
         "#
         )
 }
+
+#[test]
+fn specialized() {
+    assert_cpp!(
+        r#"
+fn identity(x) {
+  x
+}
+fn add(a, b) {
+  identity(a) + identity(b)
+}
+        "#
+        )
+}

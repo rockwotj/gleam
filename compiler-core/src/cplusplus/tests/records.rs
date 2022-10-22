@@ -109,3 +109,17 @@ fn new(name: String) -> Person {
 "#,
     );
 }
+
+#[test]
+fn specialized() {
+    assert_cpp!(
+        r#"
+pub type Box(inner_type) { Box(inner: inner_type) }
+
+fn move_num(n: Int) -> Int {
+    let box = Box(n)
+    box.inner
+}
+"#,
+    );
+}

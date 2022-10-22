@@ -196,19 +196,19 @@ pub(crate) fn declarations(statement: &TypedStatement) -> Result<Vec<Declaration
 }
 
 fn generate_template_declaration<'a, 'b>(typed_parameters: &'a [Arc<Type>]) -> Document<'b> {
-    let generic_ids: Vec<_> = typed_parameters
+    let generic_args: Vec<_> = typed_parameters
         .iter()
-        .flat_map(|p| p.generic_ids())
+        .flat_map(|p| p.type_vars())
+        .filter(|type_var| !type_var.borrow().is_link())
+        .map(|type_var| docvec!["typename ", transform_type(&Type::Var { type_: type_var })])
         .unique()
         .collect();
-    if generic_ids.is_empty() {
+    if generic_args.is_empty() {
         nil()
     } else {
         Document::Vec(
             Itertools::intersperse(
-                generic_ids
-                    .into_iter()
-                    .map(|id| docvec!["typename ", generate_generic_type_param(id)]),
+                generic_args.into_iter(),
                 break_(",", ", "),
             )
             .collect(),
@@ -219,19 +219,18 @@ fn generate_template_declaration<'a, 'b>(typed_parameters: &'a [Arc<Type>]) -> D
 }
 
 fn generate_template_args<'a, 'b>(typed_parameters: &'a [Arc<Type>]) -> Document<'b> {
-    let generic_ids: Vec<_> = typed_parameters
+    let generic_args: Vec<_> = typed_parameters
         .iter()
-        .flat_map(|p| p.generic_ids())
+        .flat_map(|p| p.type_vars())
+        .map(|type_var| transform_type(&Type::Var {type_: type_var} ))
         .unique()
         .collect();
-    if generic_ids.is_empty() {
+    if generic_args.is_empty() {
         nil()
     } else {
         Document::Vec(
             Itertools::intersperse(
-                generic_ids
-                    .into_iter()
-                    .map(generate_generic_type_param),
+                generic_args.into_iter(),
                 break_(",", ", "),
             )
             .collect(),

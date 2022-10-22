@@ -219,8 +219,8 @@ impl<'module> ExpressionGenerator {
                     },
                     _ => Err(Error::InternalError { message: format!("Unexpected type for record singleton: {:?}", type_) })
                 }?;
-                // TODO: Should/can we generate singletons?
                 let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
+                // TODO: If this is a template we need to declare that
                 GeneratedExpr::result(docvec![
                     "gleam::MakeRef<",
                     to_symbol(name, *public, &module, args),
@@ -327,6 +327,7 @@ impl<'module> ExpressionGenerator {
                     _ => Err(Error::InternalError { message: format!("Unexpected type for record constructor: {:?}", type_) })
                 }?;
                 let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
+                // TODO: If this is a template we need to declare that
                 GeneratedExpr::result(to_symbol(name, *public, &module, &args).surround("gleam::MakeRef<", ">"))
             }
             _ => {

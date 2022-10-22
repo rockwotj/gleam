@@ -10,7 +10,7 @@ expression: "\npub fn cons(head: String, tail: List(String)) -> List(String) {\n
 namespace my {
 namespace module {
 
-gleam::Ref<gleam::List> cons(gleam::String head, gleam::Ref<gleam::List> tail);
+gleam::Ref<gleam::List> cons(gleam::String head, gleam::Ref<gleam::List<gleam::String>> tail);
 
 } // namespace my
 } // namespace module
@@ -23,8 +23,9 @@ gleam::Ref<gleam::List> cons(gleam::String head, gleam::Ref<gleam::List> tail);
 namespace my {
 namespace module {
 
-gleam::Ref<gleam::List> cons(gleam::String head, gleam::Ref<gleam::List> tail) {
-  return gleam::MakeList<gleam::String>({head}, tail);
+gleam::Ref<gleam::List> cons(gleam::String head, gleam::Ref<gleam::List<gleam::String>> tail) {
+  return gleam::MakeList<gleam::String>({head},
+  tail);
 };
 
 } // namespace my

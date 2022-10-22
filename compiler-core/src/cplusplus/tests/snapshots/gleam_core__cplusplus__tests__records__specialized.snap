@@ -1,0 +1,45 @@
+---
+source: compiler-core/src/cplusplus/tests/records.rs
+expression: "\npub type Box(inner_type) { Box(inner: inner_type) }\n\nfn move_num(n: Int) -> Int {\n    let box = Box(n)\n    box.inner\n}\n"
+---
+#ifndef MY_PACKAGE_MY_MODULE_H_
+#define MY_PACKAGE_MY_MODULE_H_
+
+#include <gleam.h>
+
+namespace my {
+namespace module {
+
+template <typename T$8>
+class Box;
+
+int64_t move_num(int64_t n);
+
+template <typename T$8>
+class Box {
+public:
+  Box(T$8 inner) : m$inner(inner) {}
+  T$8 inner() const { return m$inner; }
+private:
+  T$8 m$inner;
+};
+
+} // namespace my
+} // namespace module
+
+#endif // MY_PACKAGE_MY_MODULE_H_
+
+---
+#include "module.h"
+
+namespace my {
+namespace module {
+
+int64_t move_num(int64_t n) {
+  gleam::Ref<::my::module::Box<int64_t>> box = gleam::MakeRef<::my::module::Box<int64_t>>(n);
+  return box->inner();
+};
+
+} // namespace my
+} // namespace module
+
