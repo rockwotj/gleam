@@ -1,12 +1,14 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use crate::ast::SrcSpan;
 use crate::diagnostic::{Diagnostic, Label, Location};
-use crate::{ast::BinOp, cplusplus, parse::error::ParseErrorType, type_::Type};
+use crate::type_::FieldAccessUsage;
+use crate::{ast::BinOp, parse::error::ParseErrorType, type_::Type};
+use crate::cplusplus;
 use crate::{
     bit_string,
     diagnostic::Level,
     javascript,
-    type_::{pretty::Printer, UnifyErrorSituation, UnknownRecordFieldSituation},
+    type_::{pretty::Printer, UnifyErrorSituation},
 };
 use hexpm::version::pubgrub_report::{DefaultStringReporter, Reporter};
 use hexpm::version::ResolutionError;
@@ -1046,7 +1048,7 @@ Hint: Add some type annotations and try again."
                 }
 
                 TypeError::UnknownRecordField {
-                    situation,
+                    usage,
                     location,
                     typ,
                     label,
@@ -1073,8 +1075,8 @@ Hint: Add some type annotations and try again."
 
                     // Give a hint about Gleam not having OOP methods if it
                     // looks like they might be trying to call one.
-                    match situation {
-                        Some(UnknownRecordFieldSituation::FunctionCall) => {
+                    match usage {
+                        FieldAccessUsage::MethodCall => {
                             let msg = wrap(
                                 "Gleam is not object oriented, so if you are trying \
 to call a method on this value you may want to use the function syntax instead.",
@@ -1085,7 +1087,7 @@ to call a method on this value you may want to use the function syntax instead."
                             text.push_str(label);
                             text.push_str("(value)");
                         }
-                        None => (),
+                        FieldAccessUsage::Other => (),
                     }
 
                     let label = did_you_mean(label, fields)
