@@ -156,11 +156,13 @@ impl<'module> ExpressionGenerator {
             ValueConstructor {
                 public,
                 variant: ValueConstructorVariant::ModuleFn { module, name, .. },
-                ..
+                type_,
             } => {
-                // Function pointers need to wrapped in a struct so that they can be
-                // interchangeable with functions defined as expressions.
-                GeneratedExpr::result(to_symbol(name, *public, module).surround("gleam::Ref(", ")"))
+                let (mut args, ret_type) = type_.fn_types().ok_or_else(|| Error::InternalError {
+                    message: format!("Unexpected type for ModuleFn: {:?}", type_) 
+                })?;
+                args.push(ret_type);
+                GeneratedExpr::result(to_symbol(name, *public, module, &args))
             }
             ValueConstructor {
                 public,
@@ -173,36 +175,55 @@ impl<'module> ExpressionGenerator {
                     },
                 type_,
             } if *arity > 0 => {
-                let (args, _) = type_.fn_types().ok_or_else(|| Error::InternalError {
+                let (mut args, ret_type) = type_.fn_types().ok_or_else(|| Error::InternalError {
                     message: format!("Unexpected type for record constructor: {:?}", type_),
                 })?;
                 let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
                 let arg_types = Document::Vec(
                     Itertools::intersperse(
-                        args.into_iter().map(|arg| transform_type(&arg)),
+                        args.iter().map(|arg| transform_type(arg)),
                         break_(",", ", "),
                     )
                     .collect(),
                 );
+                args.push(ret_type);
                 GeneratedExpr::result(docvec!(
                     "gleam::WrappedConstructor<",
                     // TODO: This seems to be the wrong public?
-                    to_symbol(name, *public, &module),
+                    to_symbol(name, *public, &module, &args),
                     break_(",", ", "),
                     arg_types,
                     ">()",
                 ))
             }
             ValueConstructor {
-                public,
                 variant: ValueConstructorVariant::Record { module, name, .. },
                 ..
+            } if module.is_empty() && name == "True" => {
+                GeneratedExpr::of("true")
+            }
+            ValueConstructor {
+                variant: ValueConstructorVariant::Record { module, name, .. },
+                ..
+            } if module.is_empty() && name == "False" => {
+                GeneratedExpr::of("false")
+            }
+            ValueConstructor {
+                public,
+                variant: ValueConstructorVariant::Record { module, name, .. },
+                type_,
             } => {
+                let args = match type_.as_ref() {
+                    Type::App { args, .. } => {
+                        Ok(args)
+                    },
+                    _ => Err(Error::InternalError { message: format!("Unexpected type for record singleton: {:?}", type_) })
+                }?;
                 // TODO: Should/can we generate singletons?
                 let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
                 GeneratedExpr::result(docvec![
                     "gleam::MakeRef<",
-                    to_symbol(name, *public, &module),
+                    to_symbol(name, *public, &module, args),
                     ">()",
                 ])
             }
@@ -275,21 +296,38 @@ impl<'module> ExpressionGenerator {
                     ValueConstructor {
                         public,
                         variant: ValueConstructorVariant::ModuleFn { module, name, .. },
-                        ..
+                        type_,
                     },
                 ..
-            } => GeneratedExpr::result(to_symbol(name, *public, module)),
+            } => {
+                let (mut args, ret_type) = type_.fn_types().ok_or_else(|| {
+                    Error::InternalError { message: format!("Unexpected type for module fn: {:?}", type_) }
+                })?;
+                args.push(ret_type);
+                GeneratedExpr::result(to_symbol(name, *public, module, &args))
+            },
             TypedExpr::Var {
                 constructor:
                     ValueConstructor {
                         public,
                         variant: ValueConstructorVariant::Record { module, name, .. },
-                        ..
+                        type_
                     },
                 ..
             } => {
+                let args = match type_.as_ref() {
+                    Type::App { args, .. } => {
+                        Ok(args.clone())
+                    },
+                    Type::Fn { args, retrn } => {
+                        let mut args = args.clone();
+                        args.push(retrn.clone());
+                        Ok(args)
+                    },
+                    _ => Err(Error::InternalError { message: format!("Unexpected type for record constructor: {:?}", type_) })
+                }?;
                 let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
-                GeneratedExpr::result(to_symbol(name, *public, &module))
+                GeneratedExpr::result(to_symbol(name, *public, &module, &args).surround("gleam::MakeRef<", ">"))
             }
             _ => {
                 let GeneratedExpr { eval, result } = self.generate_expr(fun)?;

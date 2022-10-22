@@ -1,6 +1,6 @@
 ---
 source: compiler-core/src/cplusplus/tests/records.rs
-expression: "\npub type Animal {\n  Cat(name: String, likes_milk: Bool)\n  Dog(name: String, barks: Bool)\n}\n"
+expression: "\npub type Animal {\n  Cat(name: String, likes_milk: Bool)\n  Dog(name: String, barks: Bool)\n}\n\npub fn make_german_shepard(name) {\n  let barks = True;\n  Dog(name, barks)\n}\n"
 ---
 #ifndef MY_PACKAGE_MY_MODULE_H_
 #define MY_PACKAGE_MY_MODULE_H_
@@ -15,6 +15,8 @@ class Animal;
 class Cat;
 
 class Dog;
+
+gleam::Ref<::my::module::Animal> make_german_shepard(gleam::String name);
 
 class Animal {
 public:
@@ -52,7 +54,10 @@ private:
 namespace my {
 namespace module {
 
-
+gleam::Ref<::my::module::Animal> make_german_shepard(gleam::String name) {
+  bool barks = true;
+  return gleam::MakeRef<::my::module::Dog>(name, barks);
+};
 
 } // namespace my
 } // namespace module

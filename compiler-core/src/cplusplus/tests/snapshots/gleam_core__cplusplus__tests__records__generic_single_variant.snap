@@ -1,6 +1,6 @@
 ---
 source: compiler-core/src/cplusplus/tests/records.rs
-expression: "\npub type Box(inner_type) {\n  Box(inner: inner_type)\n}\n"
+expression: "\npub type Box(inner_type) {\n  Box(inner: inner_type)\n}\n\npub fn make_box(v: inner) {\n  Box(v)\n}\n"
 ---
 #ifndef MY_PACKAGE_MY_MODULE_H_
 #define MY_PACKAGE_MY_MODULE_H_
@@ -10,8 +10,13 @@ expression: "\npub type Box(inner_type) {\n  Box(inner: inner_type)\n}\n"
 namespace my {
 namespace module {
 
+template <typename T$8>
 class Box;
 
+template <typename T$9>
+gleam::Ref<::my::module::Box<T$9>> make_box(T$9 v);
+
+template <typename T$8>
 class Box {
 public:
   Box(T$8 inner) : m$inner(inner) {}
@@ -31,7 +36,10 @@ private:
 namespace my {
 namespace module {
 
-
+template <typename T$9>
+gleam::Ref<::my::module::Box<T$9>> make_box(T$9 v) {
+  return gleam::MakeRef<::my::module::Box<T$9>>(v);
+};
 
 } // namespace my
 } // namespace module

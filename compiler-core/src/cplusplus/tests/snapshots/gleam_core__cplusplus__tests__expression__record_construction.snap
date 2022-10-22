@@ -43,7 +43,7 @@ int64_t increment(int64_t n) {
 
 gleam::Ref<::my::module::Person> birthday(gleam::Ref<::my::module::Person> person) {
   int64_t next_age = ::my::module::increment(person->age());
-  return ::my::module::Person(person->name(),
+  return gleam::MakeRef<::my::module::Person>(person->name(),
   next_age);
 };
 

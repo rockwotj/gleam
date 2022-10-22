@@ -7,10 +7,7 @@ use crate::docvec;
 use crate::pretty::*;
 use crate::type_::{Type, TypeVar};
 use itertools::Itertools;
-use std::{
-    sync::Arc,
-    ops::Deref,
-};
+use std::{ops::Deref, sync::Arc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Declaration<'a> {
@@ -113,7 +110,10 @@ fn function_signature<'a>(
     args: &'a [Arg<Arc<Type>>],
     return_type: &'a Arc<Type>,
 ) -> Document<'a> {
-    let mut decl = docvec!(transform_type(return_type), " ");
+    let mut all_types: Vec<_> = args.iter().map(|a| a.type_.clone()).collect();
+    all_types.push(return_type.clone());
+    let template_args = generate_template_declaration(&all_types);
+    let mut decl = docvec![template_args, transform_type(return_type), " "];
     decl = decl.append(Document::String(name.to_owned()));
     return decl.append(function_args(args).surround("(", ")"));
 }
@@ -138,8 +138,9 @@ pub(crate) fn forward_declarations(
             name,
             constructors,
             public,
+            typed_parameters,
             ..
-        } => record_forward_declarations(constructors, name)
+        } => record_forward_declarations(constructors, typed_parameters, name)
             .into_iter()
             .map(|doc| Declaration::Class {
                 doc,
@@ -153,18 +154,20 @@ pub(crate) fn forward_declarations(
 }
 
 fn record_forward_declarations<'a>(
-    variants: &'a Vec<RecordConstructor<Arc<Type>>>,
+    variants: &'a [RecordConstructor<Arc<Type>>],
+    typed_parameters: &'a [Arc<Type>],
     name: &'a String,
 ) -> Vec<Document<'a>> {
+    let template_args = generate_template_declaration(typed_parameters);
+    let classes = variants
+        .iter()
+        .map(|variant| docvec![template_args.clone(), "class ", variant.name, ";"])
+        .collect();
     let superclass = if variants.len() > 1 {
-        vec![docvec!["class ", name, ";"]]
+        vec![docvec![template_args, "class ", name, ";"]]
     } else {
         vec![]
     };
-    let classes = variants
-        .iter()
-        .map(|variant| docvec!["class ", variant.name, ";"])
-        .collect();
     vec![superclass, classes].concat()
 }
 
@@ -177,8 +180,9 @@ pub(crate) fn declarations(statement: &TypedStatement) -> Result<Vec<Declaration
             name,
             constructors,
             public,
+            typed_parameters,
             ..
-        } => record_declarations(name, constructors)
+        } => record_declarations(name, typed_parameters, constructors)
             .into_iter()
             .map(|doc| Declaration::Class {
                 doc,
@@ -191,12 +195,60 @@ pub(crate) fn declarations(statement: &TypedStatement) -> Result<Vec<Declaration
     })
 }
 
+fn generate_template_declaration<'a, 'b>(typed_parameters: &'a [Arc<Type>]) -> Document<'b> {
+    let generic_ids: Vec<_> = typed_parameters
+        .iter()
+        .flat_map(|p| p.generic_ids())
+        .unique()
+        .collect();
+    if generic_ids.is_empty() {
+        nil()
+    } else {
+        Document::Vec(
+            Itertools::intersperse(
+                generic_ids
+                    .into_iter()
+                    .map(|id| docvec!["typename ", generate_generic_type_param(id)]),
+                break_(",", ", "),
+            )
+            .collect(),
+        )
+        .surround("template <", ">")
+        .append(line())
+    }
+}
+
+fn generate_template_args<'a, 'b>(typed_parameters: &'a [Arc<Type>]) -> Document<'b> {
+    let generic_ids: Vec<_> = typed_parameters
+        .iter()
+        .flat_map(|p| p.generic_ids())
+        .unique()
+        .collect();
+    if generic_ids.is_empty() {
+        nil()
+    } else {
+        Document::Vec(
+            Itertools::intersperse(
+                generic_ids
+                    .into_iter()
+                    .map(generate_generic_type_param),
+                break_(",", ", "),
+            )
+            .collect(),
+        )
+        .surround("<", ">")
+    }
+}
+
 fn record_declarations<'a>(
     name: &'a str,
+    typed_parameters: &'a [Arc<Type>],
     variants: &'a Vec<RecordConstructor<Arc<Type>>>,
 ) -> Vec<Document<'a>> {
     let superclass = if variants.len() > 1 {
-        let (first, rest) = variants.split_first().expect("There must be at least one struct variant");
+        let (first, rest) = variants
+            .split_first()
+            .expect("There must be at least one struct variant");
         let shared_arguments: Vec<(String, RecordConstructorArg<Arc<Type>>)> = first
             .arguments
             .iter()
@@ -226,7 +278,15 @@ fn record_declarations<'a>(
     };
     let decls: Vec<Document<'a>> = variants
         .iter()
-        .map(|variant| record_declaration(&variant.name, &variant.arguments, &superclass, false))
+        .map(|variant| {
+            record_declaration(
+                &variant.name,
+                &variant.arguments,
+                typed_parameters,
+                &superclass,
+                false,
+            )
+        })
         .collect();
     vec![
         superclass
@@ -234,6 +294,7 @@ fn record_declarations<'a>(
                 vec![record_declaration(
                     &c.name,
                     &c.shared_arguments.into_iter().map(|(_, v)| v).collect_vec(),
+                    typed_parameters,
                     &None,
                     true,
                 )]
@@ -254,12 +315,17 @@ struct SuperClass {
 fn record_declaration<'a, 'b>(
     variant_name: &'a str,
     args: &'a [RecordConstructorArg<Arc<Type>>],
+    typed_parameters: &'b [Arc<Type>],
     supertype: &'a Option<SuperClass>,
     is_super_type: bool,
 ) -> Document<'b> {
     let inheritance = match supertype {
         None => "".to_doc(),
-        Some(superclass) => docvec![" : public ", Document::String(superclass.name.clone())],
+        Some(superclass) => docvec![
+            " : public ",
+            Document::String(superclass.name.clone()),
+            generate_template_args(typed_parameters)
+        ],
     };
     let super_members = match supertype {
         None => im::HashSet::new(),
@@ -321,13 +387,15 @@ fn record_declaration<'a, 'b>(
         Itertools::intersperse(constructor_args.into_iter(), break_(",", ", ")).collect(),
     );
     if let Some(superclass) = supertype {
-        let super_initialization = Document::String(superclass.name.clone()).append(
+        let super_initialization = docvec![
+            Document::String(superclass.name.clone()),
+            generate_template_args(typed_parameters),
             Document::Vec(
                 Itertools::intersperse(super_constructor_args.into_iter(), break_(",", ", "))
                     .collect(),
             )
             .surround("(", ")"),
-        );
+        ];
         member_initialization.insert(0, super_initialization);
     }
     let mut member_initialization = Document::Vec(
@@ -338,7 +406,9 @@ fn record_declaration<'a, 'b>(
     }
     let accessors = Document::Vec(Itertools::intersperse(accessors.into_iter(), line()).collect());
     let members = Document::Vec(Itertools::intersperse(members.into_iter(), line()).collect());
+    let template_args = generate_template_declaration(typed_parameters);
     docvec![
+        template_args,
         "class ",
         Document::String(variant_name.to_owned()),
         inheritance,
@@ -355,7 +425,12 @@ fn record_declaration<'a, 'b>(
             " {}",
             line(),
             if is_super_type {
-                docvec!["virtual ~", Document::String(variant_name.to_owned()), "() {}", line()]
+                docvec![
+                    "virtual ~",
+                    Document::String(variant_name.to_owned()),
+                    "() {}",
+                    line()
+                ]
             } else {
                 nil()
             },
@@ -391,6 +466,7 @@ pub(crate) fn to_symbol<'a, 'b>(
     name: &'a str,
     public: bool,
     module: &'a Vec<String>,
+    args: &'a [Arc<Type>],
 ) -> Document<'b> {
     let mut doc = if module.is_empty() {
         "gleam::".to_doc()
@@ -400,7 +476,11 @@ pub(crate) fn to_symbol<'a, 'b>(
     if !public {
         doc = doc.append("_private::");
     }
-    doc.append(Document::String(name.to_owned()))
+    docvec![
+        doc,
+        Document::String(name.to_owned()),
+        generate_template_args(args),
+    ]
 }
 
 pub(crate) fn transform_type<'a, 'b>(type_: &'a Type) -> Document<'b> {
@@ -418,17 +498,20 @@ pub(crate) fn transform_type<'a, 'b>(type_: &'a Type) -> Document<'b> {
                 name,
                 public,
                 module,
-                ..
-            } => to_symbol(name, *public, module).surround("gleam::Ref<", ">"),
+                args,
+            } => to_symbol(name, *public, module, args).surround("gleam::Ref<", ">"),
             Type::Fn { args, retrn } => function_type(retrn.clone(), args.clone()),
-            Type::Var { type_ } => {
-                match type_.borrow().deref() {
-                    TypeVar::Link { type_: typ } => transform_type(typ),
-                    TypeVar::Generic { id } => Document::String(format!("T${}", id)),
-                    TypeVar::Unbound { .. } => "?".to_doc(),
+            Type::Var { type_ } => match type_.borrow().deref() {
+                TypeVar::Link { type_: typ } => transform_type(typ),
+                TypeVar::Generic { id } | TypeVar::Unbound { id } => {
+                    generate_generic_type_param(*id)
                 }
             },
             Type::Tuple { .. } => "?".to_doc(),
         }
     };
+}
+
+fn generate_generic_type_param<'a>(id: u64) -> Document<'a> {
+    Document::String(format!("T${}", id))
 }

@@ -40,7 +40,7 @@ using Function = std::function<ReturnType(Args...)>;
 
 
 template <typename ConstructorType, typename... Args>
-Function<Ref<ConstructorType>(Args...)> WrappedConstructor() {
+Function<Ref<ConstructorType>, Args...> WrappedConstructor() {
   return [](Args... args) -> Ref<ConstructorType> {
     return MakeRef<ConstructorType>(args...);
   };
@@ -75,11 +75,11 @@ class NonEmptyList : public List<T> {
 template <typename T>
 class EmptyList : public List<T> {
   public:
-    static INSTANCE: List<T> = MakeRef<EmptyList<T>>();
+    static List<T> INSTANCE = MakeRef<EmptyList<T>>();
 };
 
 template <typename T>
-Ref<List<T>> MakeList(std::initializer_list<T> list, Ref<List<T>> init = EmptyList::INSTANCE) {
+Ref<List<T>> MakeList(std::initializer_list<T> list, Ref<List<T>> init = EmptyList<T>::INSTANCE) {
   Ref<List<T>> result = init;
   for (auto it = std::rbegin(list); it != std::rend(list); ++it) {
     result = MakeRef<NonEmptyList>(*it, result);

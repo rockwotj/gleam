@@ -38,6 +38,11 @@ pub type Animal {
   Cat(name: String, likes_milk: Bool)
   Dog(name: String, barks: Bool)
 }
+
+pub fn make_german_shepard(name) {
+  let barks = True;
+  Dog(name, barks)
+}
 "#,
     );
 }
@@ -48,6 +53,10 @@ fn generic_single_variant() {
         r#"
 pub type Box(inner_type) {
   Box(inner: inner_type)
+}
+
+pub fn make_box(v: inner) {
+  Box(v)
 }
 "#,
     );
@@ -60,6 +69,14 @@ fn generic_multiple_variant() {
 pub type Either(left_type, right_type) {
   Left(v: left_type)
   Right(v: right_type)
+}
+
+pub fn make_left(v: left) {
+  Left(v)
+}
+
+pub fn make_right(v: right) {
+  Right(v)
 }
 "#,
     );

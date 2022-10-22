@@ -96,6 +96,25 @@ impl Type {
         matches!(self, Self::Var { type_: typ } if typ.borrow().is_unbound())
     }
 
+    pub fn generic_ids(&self) -> Vec<u64> {
+        match self {
+            Self::App { args, .. } => {
+                args.iter().flat_map(|a| a.generic_ids()).collect()
+            },
+            Self::Fn { args, retrn } => {
+                let args_generic_ids: Vec<_> = args.iter().flat_map(|a| a.generic_ids()).collect();
+                let retrn_generic_ids = retrn.generic_ids();
+                [args_generic_ids, retrn_generic_ids].concat()
+            },
+            Self::Var { type_ } => {
+                type_.borrow().generic_ids()
+            },
+            Self::Tuple { elems } => {
+                elems.iter().flat_map(|e| e.generic_ids()).collect()
+            }
+        }
+    }
+
     pub fn return_type(&self) -> Option<Arc<Self>> {
         match self {
             Self::Fn { retrn, .. } => Some(retrn.clone()),
@@ -506,6 +525,13 @@ impl TypeVar {
         match self {
             Self::Link { type_ } => type_.is_string(),
             _ => false,
+        }
+    }
+
+    pub fn generic_ids(&self) -> Vec<u64> {
+        match self {
+            Self::Link { type_ } => type_.generic_ids(),
+            Self::Generic { id } | Self::Unbound { id } => vec![*id],
         }
     }
 }

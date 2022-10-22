@@ -57,3 +57,17 @@ fn subtract(x, y) {
     "#
     )
 }
+
+#[test]
+fn generic_function() {
+    assert_cpp!(
+        r#"
+fn identity(x) {
+  x
+}
+fn wrapped(x) {
+  identity(x)
+}
+        "#
+        )
+}
