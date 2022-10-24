@@ -124,7 +124,7 @@ fn gather_compiled_files(
     let extension_to_search_for = match target {
         Target::Erlang => OsStr::new("erl"),
         Target::JavaScript => OsStr::new("mjs"),
-        Target::Native => todo!("Implement me")
+        Target::Native => todo!("Implement me"),
     };
 
     wfs.read_dir(Path::new("build"))

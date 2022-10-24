@@ -63,7 +63,7 @@ impl TargetCodegenConfiguration {
             Self::JavaScript => Target::JavaScript,
             Self::CPlusPlus => Target::Native,
             Self::Erlang { .. } => Target::Erlang,
-            Self::CPlusPlus => Target::Native
+            Self::CPlusPlus => Target::Native,
         }
     }
 }

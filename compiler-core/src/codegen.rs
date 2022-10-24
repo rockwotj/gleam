@@ -1,11 +1,11 @@
 use crate::{
     build::Module,
     config::{JavaScriptConfig, PackageConfig},
-    erlang,
+    cplusplus, erlang,
     io::{FileSystemWriter, Utf8Writer},
     javascript,
     line_numbers::LineNumbers,
-    Result, cplusplus,
+    Result,
 };
 use itertools::Itertools;
 use std::{fmt::Debug, path::Path};
@@ -254,13 +254,7 @@ impl<'a> CPlusPlus<'a> {
         let path = self.output_directory.join(&name);
         let line_numbers = LineNumbers::new(&module.code);
         let mut file = writer.writer(&path)?;
-        cplusplus::module_header(
-            &module.ast,
-            &line_numbers, 
-            &path, 
-            &module.code,
-            &mut file 
-        )
+        cplusplus::module_header(&module.ast, &line_numbers, &path, &module.code, &mut file)
     }
 
     fn module_impl(
@@ -273,13 +267,7 @@ impl<'a> CPlusPlus<'a> {
         let path = self.output_directory.join(&name);
         let line_numbers = LineNumbers::new(&module.code);
         let mut file = writer.writer(&path)?;
-        cplusplus::module_impl(
-            &module.ast,
-            &line_numbers, 
-            &path, 
-            &module.code,
-            &mut file 
-        )
+        cplusplus::module_impl(&module.ast, &line_numbers, &path, &module.code, &mut file)
     }
 
     fn write_prelude(&self, writer: &impl FileSystemWriter) -> Result<()> {

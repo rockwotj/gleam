@@ -18,7 +18,10 @@ pub struct GeneratedExpr<'a> {
 
 impl<'a> GeneratedExpr<'a> {
     fn nil() -> GeneratedExpr<'a> {
-        GeneratedExpr { eval: nil(), result: nil() }
+        GeneratedExpr {
+            eval: nil(),
+            result: nil(),
+        }
     }
     fn new(eval: Document<'a>, result: Document<'a>) -> GeneratedExpr<'a> {
         GeneratedExpr { eval, result }
@@ -123,8 +126,13 @@ impl<'module> ExpressionGenerator {
             list_eval = list_eval.append(eval);
             element_results.push(result);
         }
-        let element_type = typ.list_element_type().expect("Unable to determine list element type");
-        let GeneratedExpr { eval: tail_eval, result: tail_result } = match tail {
+        let element_type = typ
+            .list_element_type()
+            .expect("Unable to determine list element type");
+        let GeneratedExpr {
+            eval: tail_eval,
+            result: tail_result,
+        } = match tail {
             Some(t) => self.generate_expr(t)?,
             None => GeneratedExpr::nil(),
         };
@@ -158,9 +166,10 @@ impl<'module> ExpressionGenerator {
                 variant: ValueConstructorVariant::ModuleFn { module, name, .. },
                 type_,
             } => {
-                let (mut args, ret_type) = type_.fn_types().ok_or_else(|| Error::InternalError {
-                    message: format!("Unexpected type for ModuleFn: {:?}", type_) 
-                })?;
+                let (mut args, ret_type) =
+                    type_.fn_types().ok_or_else(|| Error::InternalError {
+                        message: format!("Unexpected type for ModuleFn: {:?}", type_),
+                    })?;
                 args.push(ret_type);
                 GeneratedExpr::result(to_symbol(name, *public, module, &args))
             }
@@ -175,9 +184,10 @@ impl<'module> ExpressionGenerator {
                     },
                 type_,
             } if *arity > 0 => {
-                let (mut args, ret_type) = type_.fn_types().ok_or_else(|| Error::InternalError {
-                    message: format!("Unexpected type for record constructor: {:?}", type_),
-                })?;
+                let (mut args, ret_type) =
+                    type_.fn_types().ok_or_else(|| Error::InternalError {
+                        message: format!("Unexpected type for record constructor: {:?}", type_),
+                    })?;
                 let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
                 let arg_types = Document::Vec(
                     Itertools::intersperse(
@@ -199,25 +209,21 @@ impl<'module> ExpressionGenerator {
             ValueConstructor {
                 variant: ValueConstructorVariant::Record { module, name, .. },
                 ..
-            } if module.is_empty() && name == "True" => {
-                GeneratedExpr::of("true")
-            }
+            } if module.is_empty() && name == "True" => GeneratedExpr::of("true"),
             ValueConstructor {
                 variant: ValueConstructorVariant::Record { module, name, .. },
                 ..
-            } if module.is_empty() && name == "False" => {
-                GeneratedExpr::of("false")
-            }
+            } if module.is_empty() && name == "False" => GeneratedExpr::of("false"),
             ValueConstructor {
                 public,
                 variant: ValueConstructorVariant::Record { module, name, .. },
                 type_,
             } => {
                 let args = match type_.as_ref() {
-                    Type::App { args, .. } => {
-                        Ok(args)
-                    },
-                    _ => Err(Error::InternalError { message: format!("Unexpected type for record singleton: {:?}", type_) })
+                    Type::App { args, .. } => Ok(args),
+                    _ => Err(Error::InternalError {
+                        message: format!("Unexpected type for record singleton: {:?}", type_),
+                    }),
                 }?;
                 let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
                 // TODO: If this is a template we need to declare that
@@ -300,35 +306,38 @@ impl<'module> ExpressionGenerator {
                     },
                 ..
             } => {
-                let (mut args, ret_type) = type_.fn_types().ok_or_else(|| {
-                    Error::InternalError { message: format!("Unexpected type for module fn: {:?}", type_) }
-                })?;
+                let (mut args, ret_type) =
+                    type_.fn_types().ok_or_else(|| Error::InternalError {
+                        message: format!("Unexpected type for module fn: {:?}", type_),
+                    })?;
                 args.push(ret_type);
                 GeneratedExpr::result(to_symbol(name, *public, module, &args))
-            },
+            }
             TypedExpr::Var {
                 constructor:
                     ValueConstructor {
                         public,
                         variant: ValueConstructorVariant::Record { module, name, .. },
-                        type_
+                        type_,
                     },
                 ..
             } => {
                 let args = match type_.as_ref() {
-                    Type::App { args, .. } => {
-                        Ok(args.clone())
-                    },
+                    Type::App { args, .. } => Ok(args.clone()),
                     Type::Fn { args, retrn } => {
                         let mut args = args.clone();
                         args.push(retrn.clone());
                         Ok(args)
-                    },
-                    _ => Err(Error::InternalError { message: format!("Unexpected type for record constructor: {:?}", type_) })
+                    }
+                    _ => Err(Error::InternalError {
+                        message: format!("Unexpected type for record constructor: {:?}", type_),
+                    }),
                 }?;
                 let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
                 // TODO: If this is a template we need to declare that
-                GeneratedExpr::result(to_symbol(name, *public, &module, &args).surround("gleam::MakeRef<", ">"))
+                GeneratedExpr::result(
+                    to_symbol(name, *public, &module, &args).surround("gleam::MakeRef<", ">"),
+                )
             }
             _ => {
                 let GeneratedExpr { eval, result } = self.generate_expr(fun)?;

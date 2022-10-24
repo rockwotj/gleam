@@ -98,20 +98,16 @@ impl Type {
 
     pub fn type_vars(&self) -> Vec<Arc<RefCell<TypeVar>>> {
         match self {
-            Self::App { args, .. } => {
-                args.iter().flat_map(|a| a.type_vars()).collect()
-            },
+            Self::App { args, .. } => args.iter().flat_map(|a| a.type_vars()).collect(),
             Self::Fn { args, retrn } => {
                 let args_generic_ids: Vec<_> = args.iter().flat_map(|a| a.type_vars()).collect();
                 let retrn_generic_ids = retrn.type_vars();
                 [args_generic_ids, retrn_generic_ids].concat()
-            },
+            }
             Self::Var { type_ } => {
                 vec![type_.clone()]
-            },
-            Self::Tuple { elems } => {
-                elems.iter().flat_map(|e| e.type_vars()).collect()
             }
+            Self::Tuple { elems } => elems.iter().flat_map(|e| e.type_vars()).collect(),
         }
     }
 
@@ -171,13 +167,12 @@ impl Type {
 
     pub fn list_element_type(&self) -> Option<Arc<Self>> {
         match self {
-            Self::App { module, name, args, .. } if "List" == name && module.is_empty() => 
-                args.first().cloned(),
-            Self::Var { type_ } => {
-                match type_.borrow().deref() {
-                    TypeVar::Link { type_ } => type_.list_element_type(),
-                    _ => None
-                }
+            Self::App {
+                module, name, args, ..
+            } if "List" == name && module.is_empty() => args.first().cloned(),
+            Self::Var { type_ } => match type_.borrow().deref() {
+                TypeVar::Link { type_ } => type_.list_element_type(),
+                _ => None,
             },
             _ => None,
         }
@@ -998,7 +993,12 @@ fn register_values<'a>(
                     );
                 }
 
-                environment.insert_variable(constructor.name.clone(), constructor_info, typ, *public);
+                environment.insert_variable(
+                    constructor.name.clone(),
+                    constructor_info,
+                    typ,
+                    *public,
+                );
             }
         }
 
@@ -1390,7 +1390,12 @@ fn infer_statement(
                 type_: type_.clone(),
             };
 
-            environment.insert_variable(name.clone(), variant.variant.clone(), type_.clone(), public);
+            environment.insert_variable(
+                name.clone(),
+                variant.variant.clone(),
+                type_.clone(),
+                public,
+            );
             environment.insert_module_value(&name, variant);
 
             if !public {

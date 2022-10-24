@@ -1,9 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use crate::ast::SrcSpan;
+use crate::cplusplus;
 use crate::diagnostic::{Diagnostic, Label, Location};
 use crate::type_::FieldAccessUsage;
 use crate::{ast::BinOp, parse::error::ParseErrorType, type_::Type};
-use crate::cplusplus;
 use crate::{
     bit_string,
     diagnostic::Level,
@@ -2300,7 +2300,7 @@ issue in our tracker: https://github.com/gleam-lang/gleam/issues",
                     level: Level::Error,
                 }
             }
-            Error::CPlusPlusCompilationNotImplemented  => { 
+            Error::CPlusPlusCompilationNotImplemented  => {
                 Diagnostic {
                     title: "Native compilation is not yet supported".into(),
                     text: "Native gleam is still in development and is not ready to face a C++ compiler 😀".into(),

@@ -69,7 +69,7 @@ fn wrapped(x) {
   identity(x)
 }
         "#
-        )
+    )
 }
 
 #[test]
@@ -83,5 +83,5 @@ fn add(a, b) {
   identity(a) + identity(b)
 }
         "#
-        )
+    )
 }

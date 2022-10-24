@@ -89,6 +89,7 @@ impl LexicalScope {
                 typ: typ.clone(),
             },
         );
-        self.local_var(name).expect("This cannot failure because we just inserted this into the map")
+        self.local_var(name)
+            .expect("This cannot failure because we just inserted this into the map")
     }
 }

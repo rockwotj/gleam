@@ -1,5 +1,3 @@
 #include "gleam.h"
 
-namespace gleam {
-
-}
+namespace gleam {}
