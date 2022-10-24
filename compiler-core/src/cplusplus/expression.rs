@@ -64,7 +64,7 @@ impl<'module> ExpressionGenerator {
                     value.to_doc()
                 };
                 // TODO: Do we need to escape quotes?
-                GeneratedExpr::result(doc.surround("gleam::MakeRef<gleam::String>(u8\"", "\")"))
+                GeneratedExpr::result(doc.surround("gleam::MakeString(u8\"", "\")"))
             }
             TypedExpr::Var {
                 name, constructor, ..

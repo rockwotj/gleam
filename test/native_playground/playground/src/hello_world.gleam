@@ -11,3 +11,7 @@ pub fn make_string_list(v: String) -> List(String) {
   let r = [v]
   r
 }
+
+pub fn main(_args: List(String)) -> Int {
+  0
+}

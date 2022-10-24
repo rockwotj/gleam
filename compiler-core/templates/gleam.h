@@ -14,10 +14,11 @@ namespace gleam {
 template <typename T>
 using Ref = std::shared_ptr<T>;
 template <typename T, typename... Args>
-Ref<T> MakeRef(Args &&...args) {
+Ref<T> MakeRef(Args&&... args) {
   return std::make_shared<T>(args...);
 }
 using String = Ref<std::string>;
+String MakeString(char* str);
 
 /// A base type for all anonymous or referenced functions declared in Native
 /// Gleam
@@ -58,12 +59,12 @@ class List {
 template <typename T>
 class NonEmptyList : public List<T> {
  public:
-  NonEmptyList(const T &head, const Ref<List<T>> &tail)
-      : List<T>(), head_(head), tail_(tail) {}
+  NonEmptyList(T head, Ref<List<T>> tail)
+      : List<T>(), head_(std::move(head)), tail_(std::move(tail)) {}
 
-  const T &head() const { return head_; }
+  const T& head() const { return head_; }
 
-  const Ref<List<T>> &tail() const { return tail_; }
+  const Ref<List<T>>& tail() const { return tail_; }
 
  private:
   T head_;

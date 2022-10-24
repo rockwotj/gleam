@@ -233,6 +233,7 @@ where
 
             match extension {
                 "mjs" | "js" | "hrl" => (),
+                "cc" | "h" | "hpp" | "cpp" | "c" => (),
                 "erl" => {
                     let _ = to_compile_modules.insert(relative_path.clone());
                 }

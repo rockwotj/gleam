@@ -1,3 +1,7 @@
 #include "gleam.h"
 
-namespace gleam {}
+namespace gleam {
+
+String MakeString(char* str) { return MakeRef<std::string>(str); }
+
+}  // namespace gleam

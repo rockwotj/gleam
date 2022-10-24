@@ -15,7 +15,9 @@ watch:
 		--on-busy-update=restart \
 		-- just transpile
 
-compile:
+compile: transpile
 	clang++ -Wall -std=c++17 \
 		-I output/dist/ \
-		-c output/dist/hello_world.cc
+		output/dist/gleam.cc \
+		output/dist/hello_world.cc \
+		output/dist/main.cc 
