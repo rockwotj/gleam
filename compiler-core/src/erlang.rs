@@ -520,7 +520,7 @@ fn string(value: &str) -> Document<'_> {
 
 fn tuple<'a>(elems: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
     concat(Itertools::intersperse(elems.into_iter(), break_(",", ", ")))
-        .nest_current()
+        .nest(INDENT)
         .surround("{", "}")
         .group()
 }
@@ -572,7 +572,7 @@ fn string_concatenate_argument<'a>(value: &'a TypedExpr, env: &mut Env<'a>) -> D
 
 fn bit_string<'a>(elems: impl IntoIterator<Item = Document<'a>>) -> Document<'a> {
     concat(Itertools::intersperse(elems.into_iter(), break_(",", ", ")))
-        .nest_current()
+        .nest(INDENT)
         .surround("<<", ">>")
         .group()
 }
@@ -736,16 +736,15 @@ where
 fn seq<'a>(expressions: &'a [TypedExpr], env: &mut Env<'a>) -> Document<'a> {
     let count = expressions.len();
     let mut documents = Vec::with_capacity(count * 3);
-    documents.push(force_break());
     for (i, expression) in expressions.iter().enumerate() {
-        documents.push(expr(expression, env));
+        documents.push(expr(expression, env).group());
         if i + 1 < count {
             // This isn't the final expression so add the delimeters
             documents.push(",".to_doc());
             documents.push(line());
         }
     }
-    documents.to_doc()
+    documents.to_doc().force_break()
 }
 
 fn bin_op<'a>(
@@ -895,7 +894,7 @@ fn assert<'a>(value: &'a TypedExpr, pat: &'a TypedPattern, env: &mut Env<'a>) ->
 }
 
 fn let_<'a>(value: &'a TypedExpr, pat: &'a TypedPattern, env: &mut Env<'a>) -> Document<'a> {
-    let body = maybe_block_expr(value, env);
+    let body = maybe_block_expr(value, env).group();
     pattern(pat, env).append(" = ").append(body)
 }
 
@@ -926,7 +925,7 @@ fn list<'a>(elems: Document<'a>, tail: Option<Document<'a>>) -> Document<'a> {
         elems
     };
 
-    elems.to_doc().nest_current().surround("[", "]").group()
+    elems.to_doc().nest(INDENT).surround("[", "]").group()
 }
 
 fn var<'a>(name: &'a str, constructor: &'a ValueConstructor, env: &mut Env<'a>) -> Document<'a> {
@@ -997,7 +996,7 @@ fn const_inline<'a>(literal: &'a TypedConstant, env: &mut Env<'a>) -> Document<'
                 elements.iter().map(|e| const_inline(e, env)),
                 break_(",", ", "),
             );
-            concat(elements).nest_current().surround("[", "]").group()
+            concat(elements).nest(INDENT).surround("[", "]").group()
         }
 
         Constant::BitString { segments, .. } => bit_string(
@@ -1380,11 +1379,7 @@ fn record_update<'a>(
 /// Wrap a document in begin end
 ///
 fn begin_end(document: Document<'_>) -> Document<'_> {
-    force_break()
-        .append("begin")
-        .append(line().append(document).nest(INDENT))
-        .append(line())
-        .append("end")
+    docvec!["begin", line().append(document).nest(INDENT), line(), "end"].force_break()
 }
 
 /// Same as expr, expect it wraps seq, let, etc in begin end
@@ -1449,7 +1444,7 @@ fn erlang_error<'a>(
         .append(env.line_numbers.line_number(location.start));
     let error = "#{"
         .to_doc()
-        .append(fields_doc.group().nest_current())
+        .append(fields_doc.group().nest(INDENT))
         .append("}");
     docvec!["erlang:error", wrap_args([error.group()])]
 }

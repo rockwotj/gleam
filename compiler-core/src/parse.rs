@@ -60,7 +60,7 @@ use crate::ast::{
     RecordConstructor, RecordConstructorArg, RecordUpdateSpread, SrcSpan, Statement, TargetGroup,
     TodoKind, TypeAst, UnqualifiedImport, UntypedArg, UntypedClause, UntypedClauseGuard,
     UntypedConstant, UntypedExpr, UntypedExternalFnArg, UntypedModule, UntypedPattern,
-    UntypedRecordUpdateArg, UntypedStatement, CAPTURE_VARIABLE,
+    UntypedRecordUpdateArg, UntypedStatement, Use, CAPTURE_VARIABLE,
 };
 use crate::build::Target;
 use crate::parse::extra::ModuleExtra;
@@ -537,6 +537,11 @@ where
                 self.parse_assignment(start, AssignmentKind::Assert)?
             }
 
+            Some((start, Token::Use, _)) => {
+                let _ = self.next_tok();
+                self.parse_use(start)?
+            }
+
             // helpful error on possibly trying to group with ""
             Some((start, Token::LeftParen, _)) => {
                 return parse_error(ParseErrorType::ExprLparStart, SrcSpan { start, end: start });
@@ -676,6 +681,35 @@ where
         }
 
         Ok(Some(expr))
+    }
+
+    // A `use` expression
+    // use <- function
+    // use <- function()
+    // use <- function(a, b)
+    // use <- module.function(a, b)
+    // use a, b, c <- function(a, b)
+    // use a, b, c, <- function(a, b)
+    fn parse_use(&mut self, start: u32) -> Result<UntypedExpr, ParseError> {
+        let assignments = if let Some((_, Token::LArrow, _)) = self.tok0 {
+            vec![]
+        } else {
+            Parser::series_of(self, &Parser::parse_use_assignment, Some(&Token::Comma))?
+        };
+
+        _ = self.expect_one(&Token::LArrow)?;
+        let call = self.expect_expression_unit()?;
+
+        Ok(UntypedExpr::Use(Use {
+            location: SrcSpan::new(start, call.location().end),
+            assignments,
+            call: Box::new(call),
+        }))
+    }
+
+    fn parse_use_assignment(&mut self) -> Result<Option<(AssignName, SrcSpan)>, ParseError> {
+        let (start, name, end) = self.expect_assign_name()?;
+        Ok(Some((name, SrcSpan::new(start, end))))
     }
 
     // An assignment, with `Let` or `Assert` already consumed
@@ -2409,6 +2443,14 @@ where
         }
     }
 
+    fn expect_expression_unit(&mut self) -> Result<UntypedExpr, ParseError> {
+        if let Some(e) = self.parse_expression_unit()? {
+            Ok(e)
+        } else {
+            self.next_tok_unexpected(vec!["An expression".to_string()])
+        }
+    }
+
     //
     // Parse Helpers
     //
@@ -2951,6 +2993,7 @@ fn is_reserved_word(tok: Token) -> bool {
             | Token::Todo
             | Token::Try
             | Token::Type
+            | Token::Use
     ]
 }
 
