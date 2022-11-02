@@ -74,6 +74,7 @@ pub mod type_;
 pub mod uid;
 pub mod version;
 pub mod warning;
+pub mod ir;
 
 pub use error::{Error, Result};
 pub use warning::Warning;
