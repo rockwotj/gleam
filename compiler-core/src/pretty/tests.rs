@@ -14,8 +14,10 @@ fn fits_test() {
     assert!(fits(0, 0, vector![]));
 
     // ForceBreak never fits
-    assert!(!fits(100, 0, vector![(0, Unbroken, &ForceBreak)]));
-    assert!(!fits(100, 0, vector![(0, Broken, &ForceBreak)]));
+    let doc = ForceBroken(Box::new(nil()));
+    assert!(!fits(100, 0, vector![(0, Unbroken, &doc)]));
+    let doc = ForceBroken(Box::new(nil()));
+    assert!(!fits(100, 0, vector![(0, Broken, &doc)]));
 
     // Break in Broken fits always
     assert!(fits(
@@ -92,7 +94,7 @@ fn fits_test() {
     assert!(!fits(1, 0, vector![(0, Unbroken, &doc)]));
 
     // Nest fits if combined smaller than limit
-    let doc = NestCurrent(Box::new(String("12".to_string())));
+    let doc = Nest(0, Box::new(String("12".to_string())));
     assert!(fits(2, 0, vector![(0, Broken, &doc)]));
     assert!(fits(2, 0, vector![(0, Unbroken, &doc)]));
     assert!(!fits(1, 0, vector![(0, Broken, &doc)]));
@@ -129,23 +131,18 @@ fn format_test() {
     );
     assert_eq!("1\n  2".to_string(), doc.to_pretty_string(1));
 
-    let doc = String("111".to_string()).append(NestCurrent(Box::new(
-        Line(1).append(String("2".to_string())),
-    )));
-    assert_eq!("111\n   2".to_string(), doc.to_pretty_string(1));
-
-    let doc = ForceBreak.append(Break {
+    let doc = ForceBroken(Box::new(Break {
         broken: "broken",
         unbroken: "unbroken",
         kind: BreakKind::Strict,
-    });
-    assert_eq!("unbroken".to_string(), doc.to_pretty_string(100));
+    }));
+    assert_eq!("broken\n".to_string(), doc.to_pretty_string(100));
 
-    let doc = ForceBreak.append(Break {
+    let doc = ForceBroken(Box::new(Break {
         broken: "broken",
         unbroken: "unbroken",
         kind: BreakKind::Flex,
-    });
+    }));
     assert_eq!("unbroken".to_string(), doc.to_pretty_string(100));
 }
 
@@ -184,7 +181,8 @@ fn empty_documents() {
     assert!(!line().is_empty());
 
     // force break
-    assert!(force_break().is_empty());
+    assert!(nil().force_break().is_empty());
+    assert!(!"ok".to_doc().force_break().is_empty());
 
     // strings
     assert!("".to_doc().is_empty());
@@ -195,8 +193,6 @@ fn empty_documents() {
     // containers
     assert!("".to_doc().nest(2).is_empty());
     assert!(!"foo".to_doc().nest(2).is_empty());
-    assert!("".to_doc().nest_current().is_empty());
-    assert!(!"foo".to_doc().nest_current().is_empty());
     assert!("".to_doc().group().is_empty());
     assert!(!"foo".to_doc().group().is_empty());
     assert!(break_("", "").is_empty());

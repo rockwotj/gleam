@@ -1,5 +1,17 @@
 # Changelog
 
+# Unreleased
+
+- Generated HTML documentation now includes the `theme-color` HTML meta tag.
+- The `use` expression has been introduced. This is a new syntactic sugar that
+  permits callback using code to be written without indentation.
+- Fixed a bug where the warning for `todo` would not print the type of the code
+  to complete.
+
+## 0.24.0 - 2022-10-25
+
+[Release blog post](https://gleam.run/news/gleam-v0.24-released/)
+
 ## 0.24.0-rc4 - 2022-10-23
 
 - Fixed a bug where the string concatenate operator could produce invalid Erlang

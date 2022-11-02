@@ -11,7 +11,7 @@ pub mod pretty;
 mod tests;
 
 pub use environment::*;
-pub use error::{Error, UnifyErrorSituation, Warning};
+pub use error::{Error, InvalidUseExpressionCallKind, UnifyErrorSituation, Warning};
 pub(crate) use expression::ExprTyper;
 pub use fields::FieldMap;
 pub use prelude::*;
@@ -109,6 +109,10 @@ impl Type {
             }
             Self::Tuple { elems } => elems.iter().flat_map(|e| e.type_vars()).collect(),
         }
+    }
+
+    pub fn is_variable(&self) -> bool {
+        matches!(self, Self::Var { type_: typ } if typ.borrow().is_variable())
     }
 
     pub fn return_type(&self) -> Option<Arc<Self>> {
@@ -490,6 +494,10 @@ impl TypeVar {
 
     pub fn is_link(&self) -> bool {
         matches!(self, Self::Link { .. })
+    }
+
+    pub fn is_variable(&self) -> bool {
+        matches!(self, Self::Unbound { .. } | Self::Generic { .. })
     }
 
     pub fn is_nil(&self) -> bool {
