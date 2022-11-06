@@ -51,23 +51,6 @@ pub enum Statement {
 
 #[derive(Debug, Clone)]
 pub enum Expression {
-    /// This can be implemented via an "immediately invoked function expression"
-    /// in languages that support it.
-    ///
-    /// Examples:
-    ///
-    /// ```javascript
-    /// (() => {
-    ///   // statements
-    /// })();
-    /// ```
-    ///
-    /// ```c++
-    /// ([=]() {
-    ///   // statements
-    /// })();
-    /// ```
-    Block(Vec<Statement>),
     /// A "literal" type, which is Ints, Floats, Booleans and Strings in Gleam.
     /// Booleans are technically implemented as a prelude type in Gleam but doing simplifies
     /// codegen for most langugages.
@@ -206,7 +189,13 @@ impl IntermediateRepresentationConverter {
     /// Converts a typed expression that represents the body of a function call in gleam to a
     /// procedural IR.
     pub fn ast_to_ir(&mut self, expr: &ast::TypedExpr) -> Vec<Statement> {
-        self.convert_top_level_expr_to_ir(expr, true)
+        match expr {
+            ast::TypedExpr::Sequence { expressions, .. }
+            | ast::TypedExpr::Pipeline { expressions, .. } => {
+                self.convert_top_level_exprs_to_ir(expressions)
+            }
+            _ => self.convert_top_level_expr_to_ir(expr, true),
+        }
     }
 
     fn convert_top_level_exprs_to_ir(&mut self, exprs: &[ast::TypedExpr]) -> Vec<Statement> {
@@ -291,24 +280,36 @@ impl IntermediateRepresentationConverter {
             ast::TypedExpr::Var {
                 name, constructor, ..
             } => self.convert_variable_to_ir(name, constructor),
-            ast::TypedExpr::Sequence { expressions, .. }
-            | ast::TypedExpr::Pipeline { expressions, .. } => {
-                Expression::Block(self.convert_top_level_exprs_to_ir(expressions))
-            }
             ast::TypedExpr::Fn {
                 typ, args, body, ..
             } => self.convert_fn_to_ir(typ, args, body),
             ast::TypedExpr::Call { fun, args, .. } => self.convert_call_to_ir(fun, args),
-            ast::TypedExpr::Negate { value, .. } => {
-                Expression::UnaryOp { op: UnaryOp::Negate, expr: Box::new(self.convert_expr_to_ir(value)) }
+            ast::TypedExpr::Negate { value, .. } => Expression::UnaryOp {
+                op: UnaryOp::Negate,
+                expr: Box::new(self.convert_expr_to_ir(value)),
             },
             ast::TypedExpr::RecordAccess { label, record, .. } => {
-                Expression::Accessor(Accessor::Custom { 
-                    label: label.to_owned(), 
+                Expression::Accessor(Accessor::Custom {
+                    label: label.to_owned(),
                     reciever: Box::new(self.convert_expr_to_ir(record)),
                 })
-            },
-            _ => todo!(),
+            }
+            ast::TypedExpr::ModuleSelect { .. } => todo!(),
+            ast::TypedExpr::Tuple { .. } => todo!(),
+            ast::TypedExpr::TupleIndex { .. } => todo!(),
+            ast::TypedExpr::Todo { .. } => todo!(),
+            ast::TypedExpr::BitString { .. } => todo!(),
+            ast::TypedExpr::RecordUpdate { .. } => todo!(),
+            // The rest here are things that cannot be represented as expressions in our IR, so we
+            // wrap them in blocks that are immediately invoked functions.
+            ast::TypedExpr::Sequence { expressions, .. }
+            | ast::TypedExpr::Pipeline { expressions, .. } => wrap_in_block(
+                expr.type_(),
+                self.convert_top_level_exprs_to_ir(expressions),
+            ),
+            ast::TypedExpr::Assignment { .. }
+            | ast::TypedExpr::Try { .. }
+            | ast::TypedExpr::Case { .. } => wrap_in_block(expr.type_(), self.ast_to_ir(expr)),
         }
     }
 
@@ -363,7 +364,7 @@ impl IntermediateRepresentationConverter {
                     typ: arg.type_.to_owned(),
                 })
                 .collect(),
-            body: self.convert_top_level_expr_to_ir(body, true),
+            body: self.ast_to_ir(body),
         })
     }
 
@@ -480,6 +481,22 @@ impl IntermediateRepresentationConverter {
     fn generate_internal_id(&mut self) -> Identifier {
         Identifier::Internal(self.internal_variable_id_generator.next())
     }
+}
+
+/// Some expressions can only be converted into statements, so we need to wrap the statements
+/// within a function.
+fn wrap_in_block(typ: Arc<Type>, expr: Vec<Statement>) -> Expression {
+    Expression::Call(Call::Fn {
+        args: vec![],
+        callee: Box::new(Expression::TypeConstruction(TypeConstruction::Function {
+            typ: Arc::new(Type::Fn {
+                args: vec![],
+                retrn: typ,
+            }),
+            args: vec![],
+            body: expr,
+        })),
+    })
 }
 
 fn split_module_name(module: &str) -> Vec<String> {
