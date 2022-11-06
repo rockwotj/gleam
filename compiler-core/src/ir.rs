@@ -1,5 +1,6 @@
 use crate::ast;
 use crate::type_::{Type, ValueConstructor, ValueConstructorVariant};
+use crate::uid::UniqueIdGenerator;
 use std::sync::Arc;
 use std::vec::Vec;
 
@@ -7,6 +8,10 @@ use std::vec::Vec;
 ///
 /// Right now this IR supports being emitted to either C++ or JavaScript with very little actual
 /// transformations or needing to be "lowered" to another IR.
+///
+/// This IR preserves the full Gleam type information for output languages that are also typed.
+/// There are operations in the IR for "casting", which maybe a noop on dynamic languages (such as
+/// JavaScript), but would be required for a language like C++.
 
 #[derive(Debug, Clone)]
 pub enum Statement {
@@ -67,9 +72,7 @@ pub enum Expression {
     /// Booleans are technically implemented as a prelude type in Gleam but doing simplifies
     /// codegen for most langugages.
     Literal(Literal),
-    Call {
-        // invoking a function
-    },
+    Call(Call),
     Accessor(Accessor),
     TypeConstruction(TypeConstruction),
     /// A binary operator is
@@ -91,6 +94,7 @@ pub enum Literal {
     Int { value: String },
     Float { value: String },
     String { value: String },
+    Nil,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -100,21 +104,39 @@ pub enum UnaryOp {
 
 #[derive(Debug, Clone)]
 pub enum Accessor {
-    Custom {},
-    TupleIndex {},
-    Variable { name: String },
+    Custom {
+        label: String,
+        reciever: Box<Expression>,
+    },
+    // TupleIndex {},
+    LocalVariable {
+        name: Identifier,
+        typ: Arc<Type>,
+    },
+    ModuleVariable {
+        public: bool,
+        module: Vec<String>,
+        name: String,
+        typ: Arc<Type>,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum TypeConstruction {
-    Tuple {},
+    // Tuple {},
     /// If the list is `[a, b, c, ..rest]` then elements is `a, b, c` and tail is `..rest`.
     List {
         typ: Arc<Type>,
         elements: Vec<Expression>,
         tail: Option<Box<Expression>>,
     },
-    Custom {},
+    Custom {
+        public: bool,
+        module: Vec<String>,
+        name: String,
+        typ: Arc<Type>,
+        args: Vec<Expression>,
+    },
     /// Singleton types are special cased, so that codegen can not allocate more memory but use a
     /// single shared reference.
     CustomSingleton {
@@ -123,21 +145,42 @@ pub enum TypeConstruction {
         name: String,
         typ: Arc<Type>,
     },
-    BitString {},
+    // BitString {},
     /// λ
     Function {
         typ: Arc<Type>,
+        args: Vec<FunctionArg>,
         body: Vec<Statement>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionArg {
+    name: Identifier,
+    typ: Arc<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Identifier {
+    /// A name that came from the source (or as result of syntax sugar expansion).
+    Named(String),
+    /// An  name that is required for the purposes of the IR, but did not originate from the source
+    /// program. Codegen backends should emit a variable that makes the most sense for that target.
+    Internal(u64),
+    /// An unused idenfitier.
+    Discard,
 }
 
 #[derive(Debug, Clone)]
 pub enum Call {
     /// A "builtin" function is a function that is provided by the gleam compiler. It is usually
     /// apart of the prelude, but can sometimes be provided by the target language itself.
-    Builtin(BuiltinFn),
+    // Builtin(BuiltinFn),
     /// Invoking a Gleam defined function in this module or another.
-    Fn { module: Vec<String>, name: String },
+    Fn {
+        callee: Box<Expression>,
+        args: Vec<Expression>,
+    },
 }
 
 /// A "builtin" function is a function that is provided by the gleam compiler. It is usually
@@ -149,176 +192,296 @@ pub enum BuiltinFn {
     ListTail,
 }
 
-/// Converts a typed expression that represents the body of a function call in gleam to a
-/// procedural IR.
-pub fn ast_to_ir(expr: &ast::TypedExpr) -> Vec<Statement> {
-    // Don't wrap sequences into lambdas, but just write them out directly as the function body
-    match expr {
-        ast::TypedExpr::Sequence { expressions, .. }
-        | ast::TypedExpr::Pipeline { expressions, .. } => {
-            convert_top_level_exprs_to_ir(&expressions)
-        }
-        ast::TypedExpr::Case { .. } => todo!(),
-        // Other expressions can directly be a single return statement
-        _ => vec![Statement::Return {
-            expr: convert_expr_to_ir(expr),
-        }],
+#[derive(Debug)]
+pub struct IntermediateRepresentationConverter {
+    internal_variable_id_generator: UniqueIdGenerator,
+}
+
+impl IntermediateRepresentationConverter {
+    pub fn new() -> Self {
+        return IntermediateRepresentationConverter {
+            internal_variable_id_generator: UniqueIdGenerator::new(),
+        };
     }
-}
+    /// Converts a typed expression that represents the body of a function call in gleam to a
+    /// procedural IR.
+    pub fn ast_to_ir(&mut self, expr: &ast::TypedExpr) -> Vec<Statement> {
+        self.convert_top_level_expr_to_ir(expr, true)
+    }
 
-fn convert_top_level_exprs_to_ir(exprs: &[ast::TypedExpr]) -> Vec<Statement> {
-    let last_index = exprs.len() - 1;
-    exprs
-        .iter()
-        .enumerate()
-        .flat_map(|(i, e)| convert_top_level_expr_to_ir(e, i == last_index))
-        .collect()
-}
+    fn convert_top_level_exprs_to_ir(&mut self, exprs: &[ast::TypedExpr]) -> Vec<Statement> {
+        let last_index = exprs.len() - 1;
+        exprs
+            .iter()
+            .enumerate()
+            .flat_map(|(i, e)| self.convert_top_level_expr_to_ir(e, i == last_index))
+            .collect()
+    }
 
-fn convert_top_level_expr_to_ir(
-    expr: &ast::TypedExpr,
-    is_in_return_position: bool,
-) -> Vec<Statement> {
-    match expr {
-        ast::TypedExpr::Assignment {
-            typ,
-            value,
-            kind: ast::AssignmentKind::Let,
-            pattern: ast::Pattern::Var { name, .. },
-            ..
-        } => {
-            let mut assignment = vec![Statement::Assignment {
-                var: name.to_owned(),
-                expr: convert_expr_to_ir(value),
-                typ: typ.to_owned(),
-            }];
-            if is_in_return_position {
-                assignment.push(Statement::Return {
-                    expr: Expression::Accessor(Accessor::Variable {
-                        name: name.to_owned(),
-                    }),
-                })
+    fn convert_top_level_expr_to_ir(
+        &mut self,
+        expr: &ast::TypedExpr,
+        is_in_return_position: bool,
+    ) -> Vec<Statement> {
+        match expr {
+            ast::TypedExpr::Assignment {
+                typ,
+                value,
+                kind: ast::AssignmentKind::Let,
+                pattern: ast::Pattern::Var { name, .. },
+                ..
+            } => {
+                let mut assignment = vec![Statement::Assignment {
+                    var: name.to_owned(),
+                    expr: self.convert_expr_to_ir(value),
+                    typ: typ.to_owned(),
+                }];
+                if is_in_return_position {
+                    assignment.push(Statement::Return {
+                        expr: Expression::Accessor(Accessor::LocalVariable {
+                            name: Identifier::Named(name.to_owned()),
+                            typ: typ.to_owned(),
+                        }),
+                    })
+                }
+                assignment
             }
-            assignment
+            ast::TypedExpr::Assignment { .. } => todo!(),
+            ast::TypedExpr::Try { .. } => todo!(),
+            _ if is_in_return_position => vec![Statement::Return {
+                expr: self.convert_expr_to_ir(expr),
+            }],
+            _ => vec![Statement::Expr {
+                expr: self.convert_expr_to_ir(expr),
+            }],
         }
-        ast::TypedExpr::Assignment { .. } => todo!(),
-        ast::TypedExpr::Try { .. } => todo!(),
-        _ if is_in_return_position => vec![Statement::Return {
-            expr: convert_expr_to_ir(expr),
-        }],
-        _ => vec![Statement::Expr {
-            expr: convert_expr_to_ir(expr),
-        }],
     }
-}
 
-fn convert_expr_to_ir(expr: &ast::TypedExpr) -> Expression {
-    match expr {
-        ast::TypedExpr::Int { value, .. } => Expression::Literal(Literal::Int {
-            value: value.to_owned(),
-        }),
-        ast::TypedExpr::Float { value, .. } => Expression::Literal(Literal::String {
-            value: value.to_owned(),
-        }),
-        ast::TypedExpr::String { value, .. } => Expression::Literal(Literal::String {
-            value: value.replace("\n", r#"\n"#),
-        }),
-        ast::TypedExpr::BinOp {
-            name, left, right, ..
-        } => Expression::BinOp {
-            left: Box::new(convert_expr_to_ir(left)),
-            op: *name,
-            right: Box::new(convert_expr_to_ir(right)),
-        },
-        ast::TypedExpr::List {
-            elements,
-            tail,
-            typ,
-            ..
-        } => Expression::TypeConstruction(TypeConstruction::List {
-            typ: typ.clone(),
-            elements: elements.iter().map(convert_expr_to_ir).collect(),
-            tail: tail.as_ref().map(|e| Box::new(convert_expr_to_ir(e))),
-        }),
-        ast::TypedExpr::Var {
-            name, constructor, ..
-        } => convert_variable_to_ir(name, constructor),
-        ast::TypedExpr::Sequence { expressions, .. }
-        | ast::TypedExpr::Pipeline { expressions, .. } => {
-            Expression::Block(convert_top_level_exprs_to_ir(expressions))
+    fn convert_expr_to_ir(&mut self, expr: &ast::TypedExpr) -> Expression {
+        match expr {
+            ast::TypedExpr::Int { value, .. } => Expression::Literal(Literal::Int {
+                value: value.to_owned(),
+            }),
+            ast::TypedExpr::Float { value, .. } => Expression::Literal(Literal::String {
+                value: value.to_owned(),
+            }),
+            ast::TypedExpr::String { value, .. } => Expression::Literal(Literal::String {
+                value: value.replace("\n", r#"\n"#),
+            }),
+            ast::TypedExpr::BinOp {
+                name, left, right, ..
+            } => Expression::BinOp {
+                left: Box::new(self.convert_expr_to_ir(left)),
+                op: *name,
+                right: Box::new(self.convert_expr_to_ir(right)),
+            },
+            ast::TypedExpr::List {
+                elements,
+                tail,
+                typ,
+                ..
+            } => Expression::TypeConstruction(TypeConstruction::List {
+                typ: typ.clone(),
+                elements: elements
+                    .iter()
+                    .map(|e| self.convert_expr_to_ir(e))
+                    .collect(),
+                tail: tail.as_ref().map(|e| Box::new(self.convert_expr_to_ir(e))),
+            }),
+            ast::TypedExpr::Var {
+                name, constructor, ..
+            } => self.convert_variable_to_ir(name, constructor),
+            ast::TypedExpr::Sequence { expressions, .. }
+            | ast::TypedExpr::Pipeline { expressions, .. } => {
+                Expression::Block(self.convert_top_level_exprs_to_ir(expressions))
+            }
+            ast::TypedExpr::Fn {
+                typ, args, body, ..
+            } => self.convert_fn_to_ir(typ, args, body),
+            ast::TypedExpr::Call { fun, args, .. } => self.convert_call_to_ir(fun, args),
+            ast::TypedExpr::Negate { value, .. } => {
+                Expression::UnaryOp { op: UnaryOp::Negate, expr: Box::new(self.convert_expr_to_ir(value)) }
+            },
+            ast::TypedExpr::RecordAccess { label, record, .. } => {
+                Expression::Accessor(Accessor::Custom { 
+                    label: label.to_owned(), 
+                    reciever: Box::new(self.convert_expr_to_ir(record)),
+                })
+            },
+            _ => todo!(),
         }
-        _ => todo!(),
     }
-}
 
-fn convert_variable_to_ir(name: &str, constructor: &ValueConstructor) -> Expression {
-    match constructor {
-        ValueConstructor {
-            public,
-            variant: ValueConstructorVariant::ModuleFn { name, module, .. },
-            type_,
-        } => {
-            todo!()
-        }
-        ValueConstructor {
-            public,
-            variant:
-                ValueConstructorVariant::Record {
-                    name,
-                    module,
-                    arity,
-                    ..
+    fn convert_call_to_ir(
+        &mut self,
+        fun: &ast::TypedExpr,
+        args: &[ast::CallArg<ast::TypedExpr>],
+    ) -> Expression {
+        let args: Vec<_> = args
+            .iter()
+            .map(|arg| self.convert_expr_to_ir(&arg.value))
+            .collect();
+        // Special case direct construction of records - otherwise these will all get wrapped into
+        // an anonymous function and have extra indirection.
+        if let ast::TypedExpr::Var {
+            constructor:
+                ValueConstructor {
+                    public,
+                    variant: ValueConstructorVariant::Record { module, name, .. },
+                    type_,
                 },
-            type_,
-        } if *arity > 0 => {
-            // Constructors in Gleam are essentially just factory functions. Here we wrap them in
-            // functions. We special case direct calls to create custom types in the call operator.
-            // This is a fallback path for something like:
-            // ```gleam
-            // type Foo {
-            //   Foo(String)
-            // }
-            // fn bar(str: String) -> Foo {
-            //   let x = Foo;
-            //   x(str)
-            // }
-            // ```
-            Expression::TypeConstruction(TypeConstruction::Function { 
-                typ: type_.to_owned(),
-                body: vec![
-                    Statement::Return {
-                        expr: Expression::TypeConstruction(TypeConstruction::Custom { 
-
-                        })
-                    }
-                ],
-            })
-        }
-        ValueConstructor {
-            variant: ValueConstructorVariant::Record { name, module, .. },
             ..
-        } if module.is_empty() && name == "True" => {
-            Expression::Literal(Literal::Bool { value: true })
-        }
-        ValueConstructor {
-            variant: ValueConstructorVariant::Record { name, module, .. },
-            ..
-        } if module.is_empty() && name == "False" => {
-            Expression::Literal(Literal::Bool { value: false })
-        }
-        ValueConstructor {
-            public,
-            variant: ValueConstructorVariant::Record { module, name, .. },
-            type_,
-        } => {
-            let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
-            Expression::TypeConstruction(TypeConstruction::CustomSingleton {
+        } = fun
+        {
+            return Expression::TypeConstruction(TypeConstruction::Custom {
                 public: *public,
-                module,
+                module: split_module_name(module),
                 name: name.to_owned(),
                 typ: type_.to_owned(),
-            })
+                args,
+            });
         }
-        _ => Expression::Accessor(Accessor::Variable { name: name.to_owned() }),
+        let callee = Box::new(self.convert_expr_to_ir(fun));
+        Expression::Call(Call::Fn { callee, args })
     }
+
+    fn convert_fn_to_ir(
+        &mut self,
+        typ: &Arc<Type>,
+        args: &Vec<ast::Arg<Arc<Type>>>,
+        body: &ast::TypedExpr,
+    ) -> Expression {
+        Expression::TypeConstruction(TypeConstruction::Function {
+            typ: typ.to_owned(),
+            args: args
+                .iter()
+                .map(|arg| FunctionArg {
+                    name: match arg.get_variable_name() {
+                        Some(name) => Identifier::Named(name.to_owned()),
+                        None => Identifier::Discard,
+                    },
+                    typ: arg.type_.to_owned(),
+                })
+                .collect(),
+            body: self.convert_top_level_expr_to_ir(body, true),
+        })
+    }
+
+    fn convert_variable_to_ir(&mut self, name: &str, constructor: &ValueConstructor) -> Expression {
+        match constructor {
+            ValueConstructor {
+                public,
+                variant: ValueConstructorVariant::ModuleFn { module, .. },
+                type_,
+            } => Expression::Accessor(Accessor::ModuleVariable {
+                public: *public,
+                module: module.to_owned(),
+                name: name.to_owned(),
+                typ: type_.to_owned(),
+            }),
+            ValueConstructor {
+                public,
+                variant: ValueConstructorVariant::ModuleConstant { module, .. },
+                type_,
+            } => Expression::Accessor(Accessor::ModuleVariable {
+                public: *public,
+                module: split_module_name(module),
+                name: name.to_owned(),
+                typ: type_.to_owned(),
+            }),
+            ValueConstructor {
+                public,
+                variant:
+                    ValueConstructorVariant::Record {
+                        name,
+                        module,
+                        arity,
+                        ..
+                    },
+                type_,
+            } if *arity > 0 => {
+                // Constructors in Gleam are essentially just factory functions. Here we wrap them in
+                // functions. We special case direct calls to create custom types in the call operator.
+                // This is a fallback path for something like:
+                // ```gleam
+                // type Foo {
+                //   Foo(String)
+                // }
+                // fn bar(str: String) -> Foo {
+                //   let x = Foo;
+                //   x(str)
+                // }
+                // ```
+                let (args, _) = type_
+                    .fn_types()
+                    .expect("Constructor variable to be a function");
+                let args: Vec<_> = args
+                    .into_iter()
+                    .map(|typ| FunctionArg {
+                        name: self.generate_internal_id(),
+                        typ,
+                    })
+                    .collect();
+                Expression::TypeConstruction(TypeConstruction::Function {
+                    typ: type_.to_owned(),
+                    args: args.clone(),
+                    body: vec![Statement::Return {
+                        expr: Expression::TypeConstruction(TypeConstruction::Custom {
+                            public: *public,
+                            module: split_module_name(module),
+                            name: name.to_owned(),
+                            typ: type_.to_owned(),
+                            args: args
+                                .into_iter()
+                                .map(|arg| {
+                                    Expression::Accessor(Accessor::LocalVariable {
+                                        name: arg.name,
+                                        typ: arg.typ,
+                                    })
+                                })
+                                .collect(),
+                        }),
+                    }],
+                })
+            }
+            ValueConstructor {
+                variant: ValueConstructorVariant::Record { name, .. },
+                type_,
+                ..
+            } if type_.is_bool() => Expression::Literal(Literal::Bool {
+                value: name == "True",
+            }),
+            ValueConstructor {
+                variant: ValueConstructorVariant::Record { .. },
+                type_,
+                ..
+            } if type_.is_nil() => Expression::Literal(Literal::Nil),
+            ValueConstructor {
+                public,
+                variant: ValueConstructorVariant::Record { module, name, .. },
+                type_,
+            } => Expression::TypeConstruction(TypeConstruction::CustomSingleton {
+                public: *public,
+                module: split_module_name(module),
+                name: name.to_owned(),
+                typ: type_.to_owned(),
+            }),
+            ValueConstructor {
+                variant: ValueConstructorVariant::LocalVariable { .. },
+                type_,
+                ..
+            } => Expression::Accessor(Accessor::LocalVariable {
+                name: Identifier::Named(name.to_owned()),
+                typ: type_.to_owned(),
+            }),
+        }
+    }
+
+    fn generate_internal_id(&mut self) -> Identifier {
+        Identifier::Internal(self.internal_variable_id_generator.next())
+    }
+}
+
+fn split_module_name(module: &str) -> Vec<String> {
+    module.split('/').map(|s| s.to_string()).collect()
 }
