@@ -19,22 +19,6 @@ pub enum Statement {
         expr: Expression,
     },
     Assignment {
-        /// The name of the variable - this may be reserved for a given language, or may be a
-        /// "redelcaration" so it may not be valid in that programming language to redeclare a
-        /// variable.
-        ///
-        /// Examples:
-        ///
-        /// ```gleam
-        /// let a = 1;
-        /// let a = 2;
-        /// ```
-        ///
-        /// ```javascript
-        /// const a = 1;
-        /// // invalid error, this should be renamed when the ir is being emitted.
-        /// const a = 2;
-        /// ```
         var: String,
         expr: Expression,
         typ: Arc<Type>,
@@ -51,9 +35,9 @@ pub enum Statement {
 
 #[derive(Debug, Clone)]
 pub enum Expression {
-    /// A "literal" type, which is Ints, Floats, Booleans and Strings in Gleam.
-    /// Booleans are technically implemented as a prelude type in Gleam but doing simplifies
-    /// codegen for most langugages.
+    /// A "literal" type, which is Ints, Floats, Booleans, Strings and Nil in Gleam.
+    /// Booleans + Nil are technically implemented as a prelude type in Gleam but using a literal simplifies
+    /// codegen for most langugages, as builtin types are used..
     Literal(Literal),
     Call(Call),
     Accessor(Accessor),
@@ -91,7 +75,10 @@ pub enum Accessor {
         label: String,
         reciever: Box<Expression>,
     },
-    // TupleIndex {},
+    TupleIndex {
+        index: u64,
+        tuple: Box<Expression>,
+    },
     LocalVariable {
         name: Identifier,
         typ: Arc<Type>,
@@ -106,7 +93,10 @@ pub enum Accessor {
 
 #[derive(Debug, Clone)]
 pub enum TypeConstruction {
-    // Tuple {},
+    Tuple {
+        typ: Arc<Type>,
+        elements: Vec<Expression>,
+    },
     /// If the list is `[a, b, c, ..rest]` then elements is `a, b, c` and tail is `..rest`.
     List {
         typ: Arc<Type>,
@@ -295,8 +285,16 @@ impl IntermediateRepresentationConverter {
                 })
             }
             ast::TypedExpr::ModuleSelect { .. } => todo!(),
-            ast::TypedExpr::Tuple { .. } => todo!(),
-            ast::TypedExpr::TupleIndex { .. } => todo!(),
+            ast::TypedExpr::Tuple { typ, elems, .. } => {
+                Expression::TypeConstruction(TypeConstruction::Tuple { 
+                    typ: typ.to_owned(), 
+                    elements: elems.iter().map(|e| self.convert_expr_to_ir(e)).collect(),
+                })
+            },
+            ast::TypedExpr::TupleIndex { tuple, index, .. } => Expression::Accessor(Accessor::TupleIndex { 
+                index: *index, 
+                tuple: Box::new(self.convert_expr_to_ir(tuple)),
+            }),
             ast::TypedExpr::Todo { .. } => todo!(),
             ast::TypedExpr::BitString { .. } => todo!(),
             ast::TypedExpr::RecordUpdate { .. } => todo!(),
