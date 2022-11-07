@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::type_::{Type, ValueConstructor, ValueConstructorVariant};
+use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use crate::uid::UniqueIdGenerator;
 use std::sync::Arc;
 use std::vec::Vec;
@@ -106,6 +106,9 @@ pub enum TypeConstruction {
     Custom {
         public: bool,
         module: Vec<String>,
+        /// This is the imported name of the module, if not set, then the module is either defined
+        /// within the current module OR is an unqualified import.
+        module_alias: Option<String>,
         name: String,
         typ: Arc<Type>,
         args: Vec<Expression>,
@@ -286,15 +289,17 @@ impl IntermediateRepresentationConverter {
             }
             ast::TypedExpr::ModuleSelect { .. } => todo!(),
             ast::TypedExpr::Tuple { typ, elems, .. } => {
-                Expression::TypeConstruction(TypeConstruction::Tuple { 
-                    typ: typ.to_owned(), 
+                Expression::TypeConstruction(TypeConstruction::Tuple {
+                    typ: typ.to_owned(),
                     elements: elems.iter().map(|e| self.convert_expr_to_ir(e)).collect(),
                 })
-            },
-            ast::TypedExpr::TupleIndex { tuple, index, .. } => Expression::Accessor(Accessor::TupleIndex { 
-                index: *index, 
-                tuple: Box::new(self.convert_expr_to_ir(tuple)),
-            }),
+            }
+            ast::TypedExpr::TupleIndex { tuple, index, .. } => {
+                Expression::Accessor(Accessor::TupleIndex {
+                    index: *index,
+                    tuple: Box::new(self.convert_expr_to_ir(tuple)),
+                })
+            }
             ast::TypedExpr::Todo { .. } => todo!(),
             ast::TypedExpr::BitString { .. } => todo!(),
             ast::TypedExpr::RecordUpdate { .. } => todo!(),
@@ -335,6 +340,22 @@ impl IntermediateRepresentationConverter {
             return Expression::TypeConstruction(TypeConstruction::Custom {
                 public: *public,
                 module: split_module_name(module),
+                name: name.to_owned(),
+                typ: type_.to_owned(),
+                args,
+            });
+        } else if let ast::TypedExpr::ModuleSelect {
+            // TODO: Think about this more - do we need to do something special here? It depends on
+            // imports. I think for JavaScript the answer is "yes we want tree shaking", unclear
+            // what we should do for C++..
+            module_name,
+            constructor: ModuleValueConstructor::Record { name, type_, .. },
+            ..
+        } = fun
+        {
+            return Expression::TypeConstruction(TypeConstruction::Custom {
+                public: true,
+                module: split_module_name(module_name),
                 name: name.to_owned(),
                 typ: type_.to_owned(),
                 args,
