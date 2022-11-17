@@ -19,7 +19,7 @@ pub enum Statement {
         expr: Expression,
     },
     Assignment {
-        var: String,
+        var: Identifier,
         expr: Expression,
         typ: Arc<Type>,
     },
@@ -86,6 +86,9 @@ pub enum Accessor {
     ModuleVariable {
         public: bool,
         module: Vec<String>,
+        /// This is the imported name of the module, if not set, then the module is either defined
+        /// within the current module OR is an unqualified import.
+        module_alias: Option<String>,
         name: String,
         typ: Arc<Type>,
     },
@@ -230,6 +233,14 @@ impl IntermediateRepresentationConverter {
             }
             ast::TypedExpr::Assignment { .. } => todo!(),
             ast::TypedExpr::Try { .. } => todo!(),
+            // TODO: When `try` is supported, this is no longer valid, but JS makes this assumption
+            // so it's probably fine until https://github.com/gleam-lang/gleam/issues/1834 is
+            // fixed. Once that is fixed we should just be able to delete this case so it's wrapped
+            // in a block.
+            ast::TypedExpr::Sequence { expressions, .. }
+            | ast::TypedExpr::Pipeline { expressions, .. } => {
+                self.convert_top_level_exprs_to_ir(&expressions)
+            }
             _ if is_in_return_position => vec![Statement::Return {
                 expr: self.convert_expr_to_ir(expr),
             }],
@@ -287,7 +298,31 @@ impl IntermediateRepresentationConverter {
                     reciever: Box::new(self.convert_expr_to_ir(record)),
                 })
             }
-            ast::TypedExpr::ModuleSelect { .. } => todo!(),
+            ast::TypedExpr::ModuleSelect {
+                module_alias,
+                typ,
+                module_name,
+                label,
+                constructor:
+                    ModuleValueConstructor::Fn { .. } | ModuleValueConstructor::Constant { .. },
+                ..
+            } => Expression::Accessor(Accessor::ModuleVariable {
+                public: true,
+                module: split_module_name(&module_name),
+                module_alias: Some(module_alias.to_owned()),
+                name: label.to_owned(),
+                typ: typ.to_owned(),
+            }),
+            // TODO: This case needs to handled via wrapping the constructor
+            // see convert_variable_to_ir
+            ast::TypedExpr::ModuleSelect {
+                module_alias,
+                typ,
+                module_name,
+                label,
+                constructor: ModuleValueConstructor::Record { .. },
+                ..
+            } => todo!(),
             ast::TypedExpr::Tuple { typ, elems, .. } => {
                 Expression::TypeConstruction(TypeConstruction::Tuple {
                     typ: typ.to_owned(),
@@ -339,15 +374,13 @@ impl IntermediateRepresentationConverter {
         {
             return Expression::TypeConstruction(TypeConstruction::Custom {
                 public: *public,
+                module_alias: None,
                 module: split_module_name(module),
                 name: name.to_owned(),
                 typ: type_.to_owned(),
                 args,
             });
         } else if let ast::TypedExpr::ModuleSelect {
-            // TODO: Think about this more - do we need to do something special here? It depends on
-            // imports. I think for JavaScript the answer is "yes we want tree shaking", unclear
-            // what we should do for C++..
             module_name,
             constructor: ModuleValueConstructor::Record { name, type_, .. },
             ..
@@ -355,6 +388,7 @@ impl IntermediateRepresentationConverter {
         {
             return Expression::TypeConstruction(TypeConstruction::Custom {
                 public: true,
+                module_alias: Some(module_name.to_owned()),
                 module: split_module_name(module_name),
                 name: name.to_owned(),
                 typ: type_.to_owned(),
@@ -395,6 +429,7 @@ impl IntermediateRepresentationConverter {
                 type_,
             } => Expression::Accessor(Accessor::ModuleVariable {
                 public: *public,
+                module_alias: None,
                 module: module.to_owned(),
                 name: name.to_owned(),
                 typ: type_.to_owned(),
@@ -405,6 +440,7 @@ impl IntermediateRepresentationConverter {
                 type_,
             } => Expression::Accessor(Accessor::ModuleVariable {
                 public: *public,
+                module_alias: None,
                 module: split_module_name(module),
                 name: name.to_owned(),
                 typ: type_.to_owned(),
@@ -448,6 +484,7 @@ impl IntermediateRepresentationConverter {
                     body: vec![Statement::Return {
                         expr: Expression::TypeConstruction(TypeConstruction::Custom {
                             public: *public,
+                            module_alias: None,
                             module: split_module_name(module),
                             name: name.to_owned(),
                             typ: type_.to_owned(),

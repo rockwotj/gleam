@@ -4,6 +4,7 @@ use crate::cplusplus::expression::*;
 use crate::cplusplus::scope::LexicalScope;
 use crate::cplusplus::INDENT;
 use crate::docvec;
+use crate::ir::IntermediateRepresentationConverter;
 use crate::pretty::*;
 use crate::type_::{Type, TypeVar};
 use itertools::Itertools;
@@ -54,20 +55,24 @@ pub(crate) fn implementation(statement: &TypedStatement) -> Result<Option<Docume
             body,
             ..
         } => {
+
             let mut scope = LexicalScope::new_root();
             for arg in arguments {
                 if let Some(name) = arg.names.get_variable_name() {
-                    let _ = scope.declare_local_var(name, &arg.type_);
+                    let _ = scope.declare_local_var(name.to_owned(), &arg.type_);
                 }
             }
-            let mut generator = ExpressionGenerator::new(scope);
-            let GeneratedExpr { eval, result } = generator.generate_expr(body)?;
+
+            let mut ir_generator = IntermediateRepresentationConverter::new();
+            let ir = ir_generator.ast_to_ir(body);
+
+            let mut generator = NativeIrCodeGenerator::new(scope);
+            let doc = generator.ir_to_doc(ir)?;
+
             Some(docvec![
                 function_signature(name, arguments, return_type),
                 " {",
-                docvec![line(), eval, docvec!["return ", result, ";"]]
-                    .nest(INDENT)
-                    .group(),
+                doc.nest(INDENT).group(),
                 line(),
                 "};"
             ])
