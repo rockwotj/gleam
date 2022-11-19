@@ -67,7 +67,7 @@ pub(crate) fn implementation(statement: &TypedStatement) -> Result<Option<Docume
             let ir = ir_generator.ast_to_ir(body);
 
             let mut generator = NativeIrCodeGenerator::new(scope);
-            let doc = generator.ir_to_doc(ir)?;
+            let doc = generator.ir_to_doc(&ir)?;
 
             Some(docvec![
                 function_signature(name, arguments, return_type),

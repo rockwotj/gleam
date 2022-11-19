@@ -21,17 +21,17 @@ impl NativeIrCodeGenerator {
         return NativeIrCodeGenerator { scope };
     }
 
-    pub fn ir_to_doc(&mut self, statements: Vec<ir::Statement>) -> Result<Document<'_>, Error> {
+    pub fn ir_to_doc(&mut self, statements: &Vec<ir::Statement<'_>>) -> Result<Document<'_>, Error> {
         Ok(Document::Vec(
                 Itertools::intersperse(
-                    statements.into_iter().map(|s| self.ir_statement_to_doc(s)),
+                    statements.iter().map(|s| self.ir_statement_to_doc(s)),
                     Ok(line()),
                     )
                 .try_collect()?,
                 ))
     }
 
-    fn ir_statement_to_doc(&mut self, statement: ir::Statement) -> Result<Document<'_>, Error> {
+    fn ir_statement_to_doc(&mut self, statement: &ir::Statement<'_>) -> Result<Document<'_>, Error> {
         Ok(match statement {
             ir::Statement::Return { expr } => {
                 docvec!["return ", self.ir_expr_to_doc(expr)?, ";"]
@@ -58,7 +58,7 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn ir_expr_to_doc(&mut self, expr: ir::Expression) -> Result<Document<'_>, Error> {
+    fn ir_expr_to_doc(&mut self, expr: &ir::Expression<'_>) -> Result<Document<'_>, Error> {
         Ok(match expr {
             ir::Expression::Literal(literal) => self.ir_literal_to_doc(literal)?,
             ir::Expression::Call(call) => self.ir_call_to_doc(call)?,
@@ -79,11 +79,11 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn ir_literal_to_doc(&mut self, literal: ir::Literal) -> Result<Document<'_>, Error> {
+    fn ir_literal_to_doc(&mut self, literal: &ir::Literal<'_>) -> Result<Document<'_>, Error> {
         Ok(match literal {
             ir::Literal::Bool { value } => if value { "true" } else { "false" }.to_doc(),
-            ir::Literal::Int { value } => Document::String(value),
-            ir::Literal::Float { value } => Document::String(value),
+            ir::Literal::Int { value } => value.to_doc(),
+            ir::Literal::Float { value } => value.to_doc(),
             ir::Literal::String { value } => {
                 Document::String(value).surround("gleam::MakeString(u8\"", "\")")
             }
@@ -91,7 +91,7 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn ir_call_to_doc(&mut self, call: ir::Call) -> Result<Document<'_>, Error> {
+    fn ir_call_to_doc(&mut self, call: &ir::Call<'_>) -> Result<Document<'_>, Error> {
         Ok(match call {
             ir::Call::Fn { callee, args } => {
                 let formatted_args = comma_seperate_results(
@@ -107,10 +107,10 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn ir_accessor_to_doc(&mut self, accessor: ir::Accessor) -> Result<Document<'_>, Error> {
+    fn ir_accessor_to_doc(&mut self, accessor: &ir::Accessor<'_>) -> Result<Document<'_>, Error> {
         Ok(match accessor {
             ir::Accessor::Custom { label, reciever } => {
-                docvec![self.ir_expr_to_doc(*reciever)?, "->", Document::String(label)]
+                docvec![self.ir_expr_to_doc(*reciever)?, "->", label.to_doc()]
             },
             ir::Accessor::TupleIndex { index, tuple } => self.ir_expr_to_doc(*tuple)?.surround(
                 docvec!["std::get<", Document::String(format!("{}", index)), ">("],
@@ -129,13 +129,13 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn ir_identifier_to_doc(&mut self, identifier: ir::Identifier) -> Result<Document<'_>, Error> {
+    fn ir_identifier_to_doc(&mut self, identifier: &ir::Identifier<'_>) -> Result<Document<'_>, Error> {
         todo!()
     }
 
     fn ir_type_construction_to_doc(
         &mut self,
-        construction: ir::TypeConstruction,
+        construction: &ir::TypeConstruction<'_>,
     ) -> Result<Document<'_>, Error> {
         Ok(match construction {
             ir::TypeConstruction::Tuple { typ, elements } => {
@@ -162,7 +162,7 @@ impl NativeIrCodeGenerator {
                 ]
             },
             ir::TypeConstruction::Custom { public, module, module_alias, name, typ, args } => todo!(),
-            ir::TypeConstruction::CustomSingleton { public, module, name, typ } => todo!(),
+            ir::TypeConstruction::CustomSingleton { public, module, module_alias, name, typ } => todo!(),
             ir::TypeConstruction::Function { typ, args, body } => {
                 let (_, result_type) = typ.fn_types().ok_or(Error::InternalError {
                     message: format!("Unexpected type for function: {:?}", typ),
@@ -182,7 +182,7 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn wrap_expr(&mut self, expr: ir::Expression) -> Result<Document<'_>, Error> {
+    fn wrap_expr(&mut self, expr: &ir::Expression<'_>) -> Result<Document<'_>, Error> {
         let needs_wrap = match expr {
             ir::Expression::Literal(_) => false,
             ir::Expression::Accessor(ir::Accessor::LocalVariable { .. }) => false,

@@ -14,34 +14,34 @@ use std::vec::Vec;
 /// JavaScript), but would be required for a language like C++.
 
 #[derive(Debug, Clone)]
-pub enum Statement {
+pub enum Statement<'a> {
     Return {
-        expr: Expression,
+        expr: Expression<'a>,
     },
     Assignment {
-        var: Identifier,
-        expr: Expression,
+        var: Identifier<'a>,
+        expr: Expression<'a>,
         typ: Arc<Type>,
     },
     /// An expression with an unused result. This maybe a side-effect or just dead code.
     Expr {
-        expr: Expression,
+        expr: Expression<'a>,
     },
     Conditional {
-        test: Expression,
+        test: Expression<'a>,
         body: Vec<Self>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub enum Expression {
+pub enum Expression<'a> {
     /// A "literal" type, which is Ints, Floats, Booleans, Strings and Nil in Gleam.
     /// Booleans + Nil are technically implemented as a prelude type in Gleam but using a literal simplifies
     /// codegen for most langugages, as builtin types are used..
-    Literal(Literal),
-    Call(Call),
-    Accessor(Accessor),
-    TypeConstruction(TypeConstruction),
+    Literal(Literal<'a>),
+    Call(Call<'a>),
+    Accessor(Accessor<'a>),
+    TypeConstruction(TypeConstruction<'a>),
     /// A binary operator is
     BinOp {
         left: Box<Self>,
@@ -56,10 +56,10 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone)]
-pub enum Literal {
+pub enum Literal<'a> {
     Bool { value: bool },
-    Int { value: String },
-    Float { value: String },
+    Int { value: &'a str },
+    Float { value: &'a str },
     String { value: String },
     Nil,
 }
@@ -70,79 +70,82 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone)]
-pub enum Accessor {
+pub enum Accessor<'a> {
     Custom {
-        label: String,
-        reciever: Box<Expression>,
+        label: &'a str,
+        reciever: Box<Expression<'a>>,
     },
     TupleIndex {
         index: u64,
-        tuple: Box<Expression>,
+        tuple: Box<Expression<'a>>,
     },
     LocalVariable {
-        name: Identifier,
+        name: Identifier<'a>,
         typ: Arc<Type>,
     },
     ModuleVariable {
         public: bool,
-        module: Vec<String>,
+        module: Vec<&'a str>,
         /// This is the imported name of the module, if not set, then the module is either defined
         /// within the current module OR is an unqualified import.
-        module_alias: Option<String>,
-        name: String,
+        module_alias: Option<&'a str>,
+        name: &'a str,
         typ: Arc<Type>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub enum TypeConstruction {
+pub enum TypeConstruction<'a> {
     Tuple {
         typ: Arc<Type>,
-        elements: Vec<Expression>,
+        elements: Vec<Expression<'a>>,
     },
     /// If the list is `[a, b, c, ..rest]` then elements is `a, b, c` and tail is `..rest`.
     List {
         typ: Arc<Type>,
-        elements: Vec<Expression>,
-        tail: Option<Box<Expression>>,
+        elements: Vec<Expression<'a>>,
+        tail: Option<Box<Expression<'a>>>,
     },
     Custom {
         public: bool,
-        module: Vec<String>,
+        module: Vec<&'a str>,
         /// This is the imported name of the module, if not set, then the module is either defined
         /// within the current module OR is an unqualified import.
-        module_alias: Option<String>,
-        name: String,
+        module_alias: Option<&'a str>,
+        name: &'a str,
         typ: Arc<Type>,
-        args: Vec<Expression>,
+        args: Vec<Expression<'a>>,
     },
     /// Singleton types are special cased, so that codegen can not allocate more memory but use a
     /// single shared reference.
     CustomSingleton {
         public: bool,
-        module: Vec<String>,
-        name: String,
+        module: Vec<&'a str>,
+        /// This is the imported name of the module, if not set, then the module is either defined
+        /// within the current module OR is an unqualified import.
+        module_alias: Option<&'a str>,
+        name: &'a str,
         typ: Arc<Type>,
     },
     // BitString {},
     /// λ
     Function {
         typ: Arc<Type>,
-        args: Vec<FunctionArg>,
-        body: Vec<Statement>,
+        args: Vec<FunctionArg<'a>>,
+        body: Vec<Statement<'a>>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionArg {
-    name: Identifier,
+pub struct FunctionArg<'a> {
+    name: Identifier<'a>,
     typ: Arc<Type>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Identifier {
+pub enum Identifier<'a> {
     /// A name that came from the source (or as result of syntax sugar expansion).
-    Named(String),
+    Named(&'a str),
     /// An  name that is required for the purposes of the IR, but did not originate from the source
     /// program. Codegen backends should emit a variable that makes the most sense for that target.
     Internal(u64),
@@ -151,14 +154,14 @@ pub enum Identifier {
 }
 
 #[derive(Debug, Clone)]
-pub enum Call {
+pub enum Call<'a> {
     /// A "builtin" function is a function that is provided by the gleam compiler. It is usually
     /// apart of the prelude, but can sometimes be provided by the target language itself.
     // Builtin(BuiltinFn),
     /// Invoking a Gleam defined function in this module or another.
     Fn {
-        callee: Box<Expression>,
-        args: Vec<Expression>,
+        callee: Box<Expression<'a>>,
+        args: Vec<Expression<'a>>,
     },
 }
 
@@ -184,7 +187,7 @@ impl IntermediateRepresentationConverter {
     }
     /// Converts a typed expression that represents the body of a function call in gleam to a
     /// procedural IR.
-    pub fn ast_to_ir(&mut self, expr: &ast::TypedExpr) -> Vec<Statement> {
+    pub fn ast_to_ir(&mut self, expr: &ast::TypedExpr) -> Vec<Statement<'_>> {
         match expr {
             ast::TypedExpr::Sequence { expressions, .. }
             | ast::TypedExpr::Pipeline { expressions, .. } => {
@@ -194,7 +197,7 @@ impl IntermediateRepresentationConverter {
         }
     }
 
-    fn convert_top_level_exprs_to_ir(&mut self, exprs: &[ast::TypedExpr]) -> Vec<Statement> {
+    fn convert_top_level_exprs_to_ir(&mut self, exprs: &[ast::TypedExpr]) -> Vec<Statement<'_>> {
         let last_index = exprs.len() - 1;
         exprs
             .iter()
@@ -207,7 +210,7 @@ impl IntermediateRepresentationConverter {
         &mut self,
         expr: &ast::TypedExpr,
         is_in_return_position: bool,
-    ) -> Vec<Statement> {
+    ) -> Vec<Statement<'_>> {
         match expr {
             ast::TypedExpr::Assignment {
                 typ,
@@ -217,14 +220,14 @@ impl IntermediateRepresentationConverter {
                 ..
             } => {
                 let mut assignment = vec![Statement::Assignment {
-                    var: name.to_owned(),
+                    var: Identifier::Named(name),
                     expr: self.convert_expr_to_ir(value),
                     typ: typ.to_owned(),
                 }];
                 if is_in_return_position {
                     assignment.push(Statement::Return {
                         expr: Expression::Accessor(Accessor::LocalVariable {
-                            name: Identifier::Named(name.to_owned()),
+                            name: Identifier::Named(name),
                             typ: typ.to_owned(),
                         }),
                     })
@@ -250,13 +253,13 @@ impl IntermediateRepresentationConverter {
         }
     }
 
-    fn convert_expr_to_ir(&mut self, expr: &ast::TypedExpr) -> Expression {
+    fn convert_expr_to_ir(&mut self, expr: &ast::TypedExpr) -> Expression<'_> {
         match expr {
             ast::TypedExpr::Int { value, .. } => Expression::Literal(Literal::Int {
-                value: value.to_owned(),
+                value,
             }),
-            ast::TypedExpr::Float { value, .. } => Expression::Literal(Literal::String {
-                value: value.to_owned(),
+            ast::TypedExpr::Float { value, .. } => Expression::Literal(Literal::Float {
+                value,
             }),
             ast::TypedExpr::String { value, .. } => Expression::Literal(Literal::String {
                 value: value.replace("\n", r#"\n"#),
@@ -294,7 +297,7 @@ impl IntermediateRepresentationConverter {
             },
             ast::TypedExpr::RecordAccess { label, record, .. } => {
                 Expression::Accessor(Accessor::Custom {
-                    label: label.to_owned(),
+                    label,
                     reciever: Box::new(self.convert_expr_to_ir(record)),
                 })
             }
@@ -309,12 +312,13 @@ impl IntermediateRepresentationConverter {
             } => Expression::Accessor(Accessor::ModuleVariable {
                 public: true,
                 module: split_module_name(&module_name),
-                module_alias: Some(module_alias.to_owned()),
-                name: label.to_owned(),
+                module_alias: Some(module_alias),
+                name: label,
                 typ: typ.to_owned(),
             }),
             // TODO: This case needs to handled via wrapping the constructor
             // see convert_variable_to_ir
+            // TODO: Does this need to handle Singletons or does the above?
             ast::TypedExpr::ModuleSelect {
                 module_alias,
                 typ,
@@ -355,7 +359,7 @@ impl IntermediateRepresentationConverter {
         &mut self,
         fun: &ast::TypedExpr,
         args: &[ast::CallArg<ast::TypedExpr>],
-    ) -> Expression {
+    ) -> Expression<'_> {
         let args: Vec<_> = args
             .iter()
             .map(|arg| self.convert_expr_to_ir(&arg.value))
@@ -376,7 +380,7 @@ impl IntermediateRepresentationConverter {
                 public: *public,
                 module_alias: None,
                 module: split_module_name(module),
-                name: name.to_owned(),
+                name,
                 typ: type_.to_owned(),
                 args,
             });
@@ -388,9 +392,9 @@ impl IntermediateRepresentationConverter {
         {
             return Expression::TypeConstruction(TypeConstruction::Custom {
                 public: true,
-                module_alias: Some(module_name.to_owned()),
+                module_alias: Some(module_name),
                 module: split_module_name(module_name),
-                name: name.to_owned(),
+                name,
                 typ: type_.to_owned(),
                 args,
             });
@@ -404,14 +408,14 @@ impl IntermediateRepresentationConverter {
         typ: &Arc<Type>,
         args: &Vec<ast::Arg<Arc<Type>>>,
         body: &ast::TypedExpr,
-    ) -> Expression {
+    ) -> Expression<'_> {
         Expression::TypeConstruction(TypeConstruction::Function {
             typ: typ.to_owned(),
             args: args
                 .iter()
                 .map(|arg| FunctionArg {
                     name: match arg.get_variable_name() {
-                        Some(name) => Identifier::Named(name.to_owned()),
+                        Some(name) => Identifier::Named(name),
                         None => Identifier::Discard,
                     },
                     typ: arg.type_.to_owned(),
@@ -421,7 +425,7 @@ impl IntermediateRepresentationConverter {
         })
     }
 
-    fn convert_variable_to_ir(&mut self, name: &str, constructor: &ValueConstructor) -> Expression {
+    fn convert_variable_to_ir(&mut self, name: &str, constructor: &ValueConstructor) -> Expression<'_> {
         match constructor {
             ValueConstructor {
                 public,
@@ -430,8 +434,8 @@ impl IntermediateRepresentationConverter {
             } => Expression::Accessor(Accessor::ModuleVariable {
                 public: *public,
                 module_alias: None,
-                module: module.to_owned(),
-                name: name.to_owned(),
+                module: module.iter().map(|s| &s[..]).collect(),
+                name,
                 typ: type_.to_owned(),
             }),
             ValueConstructor {
@@ -442,7 +446,7 @@ impl IntermediateRepresentationConverter {
                 public: *public,
                 module_alias: None,
                 module: split_module_name(module),
-                name: name.to_owned(),
+                name,
                 typ: type_.to_owned(),
             }),
             ValueConstructor {
@@ -486,7 +490,7 @@ impl IntermediateRepresentationConverter {
                             public: *public,
                             module_alias: None,
                             module: split_module_name(module),
-                            name: name.to_owned(),
+                            name,
                             typ: type_.to_owned(),
                             args: args
                                 .into_iter()
@@ -520,7 +524,8 @@ impl IntermediateRepresentationConverter {
             } => Expression::TypeConstruction(TypeConstruction::CustomSingleton {
                 public: *public,
                 module: split_module_name(module),
-                name: name.to_owned(),
+                module_alias: None,
+                name,
                 typ: type_.to_owned(),
             }),
             ValueConstructor {
@@ -528,20 +533,20 @@ impl IntermediateRepresentationConverter {
                 type_,
                 ..
             } => Expression::Accessor(Accessor::LocalVariable {
-                name: Identifier::Named(name.to_owned()),
+                name: Identifier::Named(name),
                 typ: type_.to_owned(),
             }),
         }
     }
 
-    fn generate_internal_id(&mut self) -> Identifier {
+    fn generate_internal_id(&mut self) -> Identifier<'_> {
         Identifier::Internal(self.internal_variable_id_generator.next())
     }
 }
 
 /// Some expressions can only be converted into statements, so we need to wrap the statements
 /// within a function.
-fn wrap_in_block(typ: Arc<Type>, expr: Vec<Statement>) -> Expression {
+fn wrap_in_block(typ: Arc<Type>, expr: Vec<Statement<'_>>) -> Expression<'_> {
     Expression::Call(Call::Fn {
         args: vec![],
         callee: Box::new(Expression::TypeConstruction(TypeConstruction::Function {
@@ -555,6 +560,6 @@ fn wrap_in_block(typ: Arc<Type>, expr: Vec<Statement>) -> Expression {
     })
 }
 
-fn split_module_name(module: &str) -> Vec<String> {
-    module.split('/').map(|s| s.to_string()).collect()
+fn split_module_name(module: &str) -> Vec<&str> {
+    module.split('/').collect()
 }

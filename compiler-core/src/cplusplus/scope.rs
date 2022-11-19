@@ -1,6 +1,7 @@
 use crate::cplusplus::error::Error;
 use crate::type_::Type;
 use std::sync::Arc;
+use crate::ir;
 
 #[derive(Debug, Clone)]
 struct DeclaredVariable {
@@ -65,7 +66,7 @@ impl LexicalScope {
 
     pub fn declare_local_var<'a>(
         &mut self,
-        name: String,
+        name: ir::Identifier<'a>,
         typ: &'a Arc<Type>,
     ) -> LocalVariable {
         let next = self.current_scope_vars.get(&name).map_or(0, |v| v.count + 1);
