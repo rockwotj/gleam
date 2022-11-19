@@ -653,7 +653,7 @@ impl<'comments> Formatter<'comments> {
 
             UntypedExpr::Int { value, .. } => value.to_doc(),
 
-            UntypedExpr::Float { value, .. } => value.to_doc(),
+            UntypedExpr::Float { value, .. } => self.float(value),
 
             UntypedExpr::String { value, .. } => self.string(value),
 
@@ -749,6 +749,16 @@ impl<'comments> Formatter<'comments> {
         let doc = string.to_doc().surround("\"", "\"");
         if string.contains('\n') {
             doc.force_break()
+        } else {
+            doc
+        }
+    }
+
+    fn float<'a>(&self, value: &'a String) -> Document<'a> {
+        let doc = value.to_doc();
+        if value.ends_with('.') {
+            let suffix = "0".to_doc();
+            doc.append(suffix)
         } else {
             doc
         }
@@ -1105,7 +1115,8 @@ impl<'comments> Formatter<'comments> {
 
     fn wrap_expr<'a>(&mut self, expr: &'a UntypedExpr) -> Document<'a> {
         match expr {
-            UntypedExpr::Sequence { .. }
+            UntypedExpr::Use(_)
+            | UntypedExpr::Sequence { .. }
             | UntypedExpr::Assignment { .. }
             | UntypedExpr::Try { .. } => "{"
                 .to_doc()
@@ -1389,7 +1400,7 @@ impl<'comments> Formatter<'comments> {
     }
 
     fn use_<'a>(&mut self, use_: &'a Use) -> Document<'a> {
-        let call = self.expr(&use_.call);
+        let call = self.expr(&use_.call).nest(INDENT);
 
         if use_.assignments.is_empty() {
             docvec!["use <- ", call]

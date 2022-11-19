@@ -5,7 +5,7 @@ use crate::{
 };
 use gleam_core::{
     build::{Mode, PackageCompiler, Target, TargetCodegenConfiguration},
-    metadata,
+    metadata, paths,
     type_::Module,
     uid::UniqueIdGenerator,
     Result,
@@ -20,8 +20,10 @@ pub fn command(options: CompilePackage) -> Result<()> {
     let config = config::read(options.package_directory.join("gleam.toml"))?;
     let target = match options.target {
         Target::Erlang => TargetCodegenConfiguration::Erlang { app_file: None },
-        Target::JavaScript => TargetCodegenConfiguration::JavaScript,
         Target::Native => TargetCodegenConfiguration::CPlusPlus,
+        Target::JavaScript => TargetCodegenConfiguration::JavaScript {
+            emit_typescript_definitions: false,
+        },
     };
 
     tracing::info!("Compiling package");
@@ -57,7 +59,7 @@ fn load_libraries(ids: &UniqueIdGenerator, lib: &Path) -> Result<im::HashMap<Str
     tracing::info!("Reading precompiled module metadata files");
     let mut manifests = im::HashMap::new();
     for lib in fs::read_dir(lib)?.filter_map(Result::ok) {
-        let path = lib.path().join("build");
+        let path = lib.path().join(paths::ARTEFACT_DIRECTORY_NAME);
         if !path.is_dir() {
             continue;
         }

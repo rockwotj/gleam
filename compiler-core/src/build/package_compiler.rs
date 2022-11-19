@@ -1,16 +1,16 @@
 use crate::{
     ast::{SrcSpan, TypedModule, UntypedModule},
     build::{dep_tree, Mode, Module, Origin, Package, Target},
-    codegen::{CPlusPlus, Erlang, ErlangApp, JavaScript},
+    codegen::{Erlang, CPlusPlus, ErlangApp, JavaScript, TypeScriptDeclarations},
     config::PackageConfig,
     error,
     io::{
         memory::InMemoryFileSystem, CommandExecutor, FileSystemIO, FileSystemReader,
-        FileSystemWriter,
+        FileSystemWriter, Stdio,
     },
     metadata::ModuleEncoder,
     parse::extra::ModuleExtra,
-    type_,
+    paths, type_,
     uid::UniqueIdGenerator,
     Error, Result, Warning,
 };
@@ -43,7 +43,7 @@ pub struct PackageCompiler<'a, IO> {
     pub write_entrypoint: bool,
     pub copy_native_files: bool,
     pub compile_beam_bytecode: bool,
-    pub silence_subprocess_stdout: bool,
+    pub subprocess_stdio: Stdio,
     pub build_journal: Option<&'a mut HashSet<PathBuf>>,
 }
 
@@ -79,7 +79,7 @@ where
             write_entrypoint: false,
             copy_native_files: true,
             compile_beam_bytecode: true,
-            silence_subprocess_stdout: false,
+            subprocess_stdio: Stdio::Inherit,
             build_journal,
         }
     }
@@ -131,7 +131,10 @@ where
     fn compile_erlang_to_beam(&mut self, modules: &HashSet<PathBuf>) -> Result<(), Error> {
         tracing::info!("compiling_erlang");
 
-        let escript_path = self.out.join("build").join("gleam@@compile.erl");
+        let escript_path = self
+            .out
+            .join(paths::ARTEFACT_DIRECTORY_NAME)
+            .join("gleam@@compile.erl");
         if !escript_path.exists() {
             let escript_source = std::include_str!("../../templates/gleam@@compile.erl");
             self.io
@@ -150,7 +153,7 @@ where
         ];
         // Add the list of modules to compile
         for module in modules {
-            let path = self.out.join("build").join(module);
+            let path = self.out.join(paths::ARTEFACT_DIRECTORY_NAME).join(module);
             args.push(path.to_string_lossy().to_string());
             self.add_build_journal(path);
         }
@@ -158,7 +161,7 @@ where
         // Write a temporary journal of compiled Beam files
         let status = self
             .io
-            .exec("escript", &args, &[], None, self.silence_subprocess_stdout)?;
+            .exec("escript", &args, &[], None, self.subprocess_stdio)?;
 
         let tmp_journal = self.lib.join("gleam_build_journal.tmp");
         if self.io.is_file(&tmp_journal) {
@@ -242,7 +245,7 @@ where
                         maybe_link_elixir_libs(
                             &self.io,
                             &self.lib.to_path_buf(),
-                            self.silence_subprocess_stdout,
+                            self.subprocess_stdio,
                         )?;
                         // Check Elixir libs just once
                         check_elixir_libs = false;
@@ -252,7 +255,9 @@ where
                 _ => continue,
             };
 
-            self.io.copy(&path, &out.join(&relative_path))?;
+            let destination = out.join(&relative_path);
+
+            self.io.copy(&path, &destination)?;
             self.add_build_journal(out.join(&relative_path));
 
             // TODO: test
@@ -273,7 +278,7 @@ where
         tracing::info!("Writing package metadata to disc");
         for module in modules {
             let name = format!("{}.gleam_module", &module.name.replace('/', "@"));
-            let path = self.out.join("build").join(name);
+            let path = self.out.join(paths::ARTEFACT_DIRECTORY_NAME).join(name);
             ModuleEncoder::new(&module.ast.type_info).write(self.io.writer(&path)?)?;
             self.add_build_journal(path);
         }
@@ -327,8 +332,10 @@ where
         }
 
         match self.target {
-            TargetCodegenConfiguration::JavaScript => self.perform_javascript_codegen(modules),
             TargetCodegenConfiguration::CPlusPlus => self.perform_cpp_codegen(modules),
+            TargetCodegenConfiguration::JavaScript {
+                emit_typescript_definitions,
+            } => self.perform_javascript_codegen(modules, *emit_typescript_definitions),
             TargetCodegenConfiguration::Erlang { app_file } => {
                 self.perform_erlang_codegen(modules, app_file.as_ref())
             }
@@ -341,18 +348,9 @@ where
         app_file: Option<&ErlangAppCodegenConfiguration>,
     ) -> Result<(), Error> {
         let mut written = HashSet::new();
-        let build_dir = self.out.join("build");
+        let build_dir = self.out.join(paths::ARTEFACT_DIRECTORY_NAME);
         let include_dir = self.out.join("include");
         let io = self.io.clone();
-
-        Erlang::new(&build_dir, &include_dir).render(io.clone(), modules)?;
-        if let Some(config) = app_file {
-            ErlangApp::new(&self.out.join("ebin"), config.include_dev_deps).render(
-                io,
-                &self.config,
-                modules,
-            )?;
-        }
 
         if self.write_entrypoint {
             self.render_entrypoint_module(&build_dir, &mut written)?;
@@ -366,6 +364,20 @@ where
             tracing::info!("skipping_native_file_copying");
         }
 
+        if let Some(config) = app_file {
+            ErlangApp::new(&self.out.join("ebin"), config.include_dev_deps).render(
+                io.clone(),
+                &self.config,
+                modules,
+            )?;
+        }
+
+        // NOTE: This must come after `copy_project_native_files` to ensure that
+        // we overwrite any precompiled Erlang that was included in the Hex
+        // package. Otherwise we will build the potentially outdated precompiled
+        // version and not the newly compiled version.
+        Erlang::new(&build_dir, &include_dir).render(io, modules)?;
+
         if self.compile_beam_bytecode {
             written.extend(modules.iter().map(Module::compiled_erlang_path));
             self.compile_erlang_to_beam(&written)?;
@@ -375,14 +387,22 @@ where
         Ok(())
     }
 
-    fn perform_javascript_codegen(&mut self, modules: &[Module]) -> Result<(), Error> {
+    fn perform_javascript_codegen(
+        &mut self,
+        modules: &[Module],
+        typescript: bool,
+    ) -> Result<(), Error> {
         let mut written = HashSet::new();
-        let artifact_dir = self.out.join("dist");
+        let typescript = if typescript {
+            TypeScriptDeclarations::Emit
+        } else {
+            TypeScriptDeclarations::None
+        };
 
-        JavaScript::new(&artifact_dir, &self.config.javascript).render(&self.io, modules)?;
+        JavaScript::new(&self.out, typescript).render(&self.io, modules)?;
 
         if self.copy_native_files {
-            self.copy_project_native_files(&artifact_dir, &mut written)?;
+            self.copy_project_native_files(&self.out, &mut written)?;
         }
         Ok(())
     }
@@ -493,7 +513,7 @@ fn type_check(
 pub fn maybe_link_elixir_libs<IO: CommandExecutor + FileSystemIO + Clone>(
     io: &IO,
     build_dir: &PathBuf,
-    silence_subprocess_stdout: bool,
+    subprocess_stdio: Stdio,
 ) -> Result<(), Error> {
     // These Elixir core libs will be loaded with the current project
     // Each should be linked into build/{target}/erlang if:
@@ -531,7 +551,7 @@ pub fn maybe_link_elixir_libs<IO: CommandExecutor + FileSystemIO + Clone>(
             &args,
             &env,
             Some(&build_dir),
-            silence_subprocess_stdout,
+            subprocess_stdio,
         )?;
         if status != 0 {
             return Err(Error::ShellCommand {

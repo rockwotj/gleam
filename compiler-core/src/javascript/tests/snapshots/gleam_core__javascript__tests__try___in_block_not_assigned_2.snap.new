@@ -1,0 +1,24 @@
+---
+source: compiler-core/src/javascript/tests/try_.rs
+assertion_line: 90
+expression: "pub fn main() -> Result(Int, Nil) {\n  try v = Ok(77);\n  let x = 1;\n  {\n    let x = 2;\n    try b = Error(x);\n    b\n  }\n  Ok(x)\n}"
+---
+import { Ok, Error } from "../gleam.mjs";
+
+export function main() {
+  let $ = new Ok(77);
+  if (!$.isOk()) return $;
+  let v = $[0];
+
+  let x = 1;
+  let x$1 = 2;
+  (() => {
+    let $1 = new Error(x$1);
+    if (!$1.isOk()) return $1;
+    let b = $1[0];
+
+    return b;
+  })();
+  return new Ok(x$1);
+}
+

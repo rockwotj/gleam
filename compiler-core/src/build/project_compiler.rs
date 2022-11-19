@@ -6,7 +6,7 @@ use crate::{
     codegen::{self, ErlangApp},
     config::PackageConfig,
     error::{FileIoAction, FileKind},
-    io::{CommandExecutor, FileSystemIO, FileSystemWriter},
+    io::{CommandExecutor, FileSystemIO, FileSystemWriter, Stdio},
     manifest::ManifestPackage,
     metadata, paths, type_,
     uid::UniqueIdGenerator,
@@ -50,6 +50,7 @@ pub struct Options {
 
 #[derive(Debug)]
 pub struct ProjectCompiler<IO> {
+    // The gleam.toml config for the root package of the project
     config: PackageConfig,
     packages: HashMap<String, ManifestPackage>,
     importable_modules: im::HashMap<String, type_::Module>,
@@ -62,7 +63,7 @@ pub struct ProjectCompiler<IO> {
     build_journal: HashSet<PathBuf>,
     /// We may want to silence subprocess stdout if we are running in LSP mode.
     /// The language server talks over stdio so printing would break that.
-    pub silence_subprocess_stdout: bool,
+    pub subprocess_stdio: Stdio,
 }
 
 // TODO: test that tests cannot be imported into src
@@ -89,7 +90,7 @@ where
             defined_modules: im::HashMap::new(),
             ids: UniqueIdGenerator::new(),
             warnings: Vec::new(),
-            silence_subprocess_stdout: false,
+            subprocess_stdio: Stdio::Inherit,
             telemetry,
             packages,
             options,
@@ -321,7 +322,7 @@ where
             &args,
             &env,
             Some(&project_dir),
-            self.silence_subprocess_stdout,
+            self.subprocess_stdio,
         )?;
 
         if status == 0 {
@@ -362,11 +363,7 @@ where
         let dest = paths::build_package(mode, target, name);
 
         // Elixir core libs must be loaded
-        package_compiler::maybe_link_elixir_libs(
-            &self.io,
-            &build_dir,
-            self.silence_subprocess_stdout,
-        )?;
+        package_compiler::maybe_link_elixir_libs(&self.io, &build_dir, self.subprocess_stdio)?;
 
         // Prevent Mix.Compilers.ApplicationTracer warnings
         // mix would make this if it didn't exist, but we make it anyway as
@@ -404,7 +401,7 @@ where
             &args,
             &env,
             Some(&project_dir),
-            self.silence_subprocess_stdout,
+            self.subprocess_stdio,
         )?;
 
         if status == 0 {
@@ -457,7 +454,6 @@ where
     ) -> Result<Vec<Module>, Error> {
         let out_path = paths::build_package(self.mode(), self.target(), &config.name);
         let lib_path = paths::build_packages(self.mode(), self.target());
-        let artifact_path = out_path.join("build");
         let mode = self.mode();
         let target = match self.target() {
             Target::Erlang => super::TargetCodegenConfiguration::Erlang {
@@ -466,7 +462,9 @@ where
                 }),
             },
             Target::Native => super::TargetCodegenConfiguration::CPlusPlus,
-            Target::JavaScript => super::TargetCodegenConfiguration::JavaScript,
+            Target::JavaScript => super::TargetCodegenConfiguration::JavaScript {
+                emit_typescript_definitions: self.config.javascript.typescript_declarations,
+            },
         };
         let mut compiler = PackageCompiler::new(
             config,
@@ -485,7 +483,7 @@ where
         compiler.write_metadata = true;
         compiler.write_entrypoint = is_root;
         compiler.compile_beam_bytecode = !is_root || self.options.perform_codegen;
-        compiler.silence_subprocess_stdout = self.silence_subprocess_stdout;
+        compiler.subprocess_stdio = self.subprocess_stdio;
         compiler.read_source_files(mode)?;
 
         // Compile project to Erlang or JavaScript source code
