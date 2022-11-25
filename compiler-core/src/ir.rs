@@ -1,10 +1,8 @@
 use crate::ast;
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use crate::uid::UniqueIdGenerator;
-use im;
 use std::sync::Arc;
 use std::vec::Vec;
-use tracing::Id;
 
 /// # An intermediate representation (IR) of Gleam's AST for a "simple" procedural language.
 ///
@@ -193,10 +191,16 @@ pub struct IntermediateRepresentationConverter<'module> {
 }
 
 impl<'module> IntermediateRepresentationConverter<'module> {
-    pub fn new() -> Self {
+    pub fn new_for_function(args: &'module [ast::Arg<Arc<Type>>]) -> Self {
+        let mut current_scope_vars = im::HashMap::new();
+        for arg in args {
+            if let Some(name) = arg.names.get_variable_name() {
+                let _ = current_scope_vars.insert(name, 0);
+            }
+        }
         return IntermediateRepresentationConverter {
             internal_variable_id_generator: UniqueIdGenerator::new(),
-            current_scope_vars: im::HashMap::new(),
+            current_scope_vars,
         };
     }
     /// Converts a typed expression that represents the body of a function call in gleam to a
@@ -359,13 +363,13 @@ impl<'module> IntermediateRepresentationConverter<'module> {
             // wrap them in blocks that are immediately invoked functions.
             ast::TypedExpr::Sequence { expressions, .. }
             | ast::TypedExpr::Pipeline { expressions, .. } => self
-                .wrap_in_block(expr.type_(), || {
-                    self.convert_top_level_exprs_to_ir(expressions)
+                .wrap_in_block(expr.type_(), |conv| {
+                    conv.convert_top_level_exprs_to_ir(expressions)
                 }),
             ast::TypedExpr::Assignment { .. }
             | ast::TypedExpr::Try { .. }
             | ast::TypedExpr::Case { .. } => {
-                self.wrap_in_block(expr.type_(), || self.ast_to_ir(expr))
+                self.wrap_in_block(expr.type_(), |conv| conv.ast_to_ir(expr))
             }
         }
     }
@@ -424,20 +428,20 @@ impl<'module> IntermediateRepresentationConverter<'module> {
         args: &'module Vec<ast::Arg<Arc<Type>>>,
         body: &'module ast::TypedExpr,
     ) -> Expression<'module> {
-        self.with_new_scope(|| {
+        self.with_new_scope(|conv| {
             Expression::TypeConstruction(TypeConstruction::Function {
                 typ: typ.to_owned(),
                 args: args
                     .iter()
                     .map(|arg| FunctionArg {
                         name: match arg.get_variable_name() {
-                            Some(name) => self.allocate_named_id(name),
+                            Some(name) => conv.allocate_named_id(name),
                             None => Identifier::Discard,
                         },
                         typ: arg.type_.to_owned(),
                     })
                     .collect(),
-                body: self.ast_to_ir(body),
+                body: conv.ast_to_ir(body),
             })
         })
     }
@@ -564,27 +568,25 @@ impl<'module> IntermediateRepresentationConverter<'module> {
         Identifier::Internal(self.internal_variable_id_generator.next())
     }
     fn lookup_named_id(&mut self, name: &'module str) -> Identifier<'module> {
-        match self.current_scope_vars.get(name) {
-            None => todo!("Unexpected missing scope var"),
-            Some(id) => Identifier::Named(name, *id),
-        }
+        let id = self.current_scope_vars.get(name).expect("Unexpected missing scope variable");
+        return Identifier::Named(name, *id);
     }
     fn allocate_named_id(&mut self, name: &'module str) -> Identifier<'module> {
         let n = match self.current_scope_vars.get(name) {
             None => 0,
             Some(n) => *n + 1,
         };
-        self.current_scope_vars.insert(name, n);
+        let _ = self.current_scope_vars.insert(name, n);
         Identifier::Named(name, n)
     }
-    fn with_new_scope<Block, Output>(&mut self, block: Block) -> Output
+    fn with_new_scope<Block, Output>(& mut self, block: Block) -> Output
     where
-        Block: Fn() -> Output,
+        Block: Fn(&mut Self) -> Output,
     {
-        let parent_scope = self.current_scope_vars;
+        let parent_scope = self.current_scope_vars.clone();
         let child_scope = parent_scope.clone();
         self.current_scope_vars = child_scope;
-        let result = block();
+        let result = block(self);
         self.current_scope_vars = parent_scope;
         result
     }
@@ -593,7 +595,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
     /// within a function.
     fn wrap_in_block<Block>(&mut self, typ: Arc<Type>, expr: Block) -> Expression<'module>
     where
-        Block: Fn() -> Vec<Statement<'module>>,
+        Block: Fn(&mut Self) -> Vec<Statement<'module>>,
     {
         Expression::Call(Call::Fn {
             args: vec![],

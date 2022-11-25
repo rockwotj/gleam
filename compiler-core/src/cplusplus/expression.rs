@@ -1,46 +1,46 @@
-use crate::ast::{Arg, AssignmentKind, BinOp, CallArg, Pattern, TypedExpr};
-use crate::cplusplus::declaration::{function_args, to_symbol, transform_type};
+use crate::ast::{BinOp, TypedExpr};
 use crate::cplusplus::error::Error;
-use crate::cplusplus::scope::{LexicalScope, LocalVariable};
+use crate::cplusplus::symbolizer::Symbolizer;
 use crate::cplusplus::INDENT;
 use crate::docvec;
 use crate::ir;
 use crate::pretty::*;
-use crate::type_::{PatternConstructor, Type, ValueConstructor, ValueConstructorVariant};
+use crate::type_::Type;
 use itertools::Itertools;
-use std::borrow::Borrow;
 use std::sync::Arc;
 use std::vec::Vec;
 
 pub struct NativeIrCodeGenerator {
+    symbolizer: Symbolizer,
 }
 
-impl NativeIrCodeGenerator {
+impl <'module> NativeIrCodeGenerator {
     pub fn new() -> Self {
-        return NativeIrCodeGenerator { };
+        return NativeIrCodeGenerator { 
+            symbolizer: Symbolizer::new(),
+        };
     }
 
-    pub fn ir_to_doc(&mut self, statements: &Vec<ir::Statement<'_>>) -> Result<Document<'_>, Error> {
+    pub fn ir_to_doc(&mut self, statements: Vec<ir::Statement<'module>>) -> Result<Document<'module>, Error> {
         Ok(Document::Vec(
                 Itertools::intersperse(
-                    statements.iter().map(|s| self.ir_statement_to_doc(s)),
+                    statements.into_iter().map(|s| self.ir_statement_to_doc(s)),
                     Ok(line()),
                     )
                 .try_collect()?,
                 ))
     }
 
-    fn ir_statement_to_doc(&mut self, statement: &ir::Statement<'_>) -> Result<Document<'_>, Error> {
+    fn ir_statement_to_doc(&mut self, statement: ir::Statement<'module>) -> Result<Document<'module>, Error> {
         Ok(match statement {
             ir::Statement::Return { expr } => {
                 docvec!["return ", self.ir_expr_to_doc(expr)?, ";"]
             }
             ir::Statement::Assignment { var, expr, typ } => {
-                let declared = self.scope.declare_local_var(var, &typ);
                 docvec![
                     self.typ_to_symbol(typ.clone())?,
                     " ",
-                    declared.name,
+                    self.ir_identifier_to_doc(var)?,
                     " = ",
                     self.ir_expr_to_doc(expr)?,
                     ";"
@@ -57,7 +57,7 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn ir_expr_to_doc(&mut self, expr: &ir::Expression<'_>) -> Result<Document<'_>, Error> {
+    fn ir_expr_to_doc(&mut self, expr: ir::Expression<'module>) -> Result<Document<'module>, Error> {
         Ok(match expr {
             ir::Expression::Literal(literal) => self.ir_literal_to_doc(literal)?,
             ir::Expression::Call(call) => self.ir_call_to_doc(call)?,
@@ -67,22 +67,22 @@ impl NativeIrCodeGenerator {
             }
             ir::Expression::BinOp { left, op, right } => {
                 docvec![
-                    self.wrap_expr(&left)?,
-                    generate_bin_op(&op)?,
-                    self.wrap_expr(&right)?,
+                    self.wrap_expr(*left)?,
+                    generate_bin_op(op)?,
+                    self.wrap_expr(*right)?,
                 ]
             }
             ir::Expression::UnaryOp { op, expr } => {
-                docvec![self.generate_unary_op(op)?, self.wrap_expr(&expr)?]
+                docvec![self.generate_unary_op(op)?, self.wrap_expr(*expr)?]
             }
         })
     }
 
-    fn ir_literal_to_doc(&mut self, literal: &ir::Literal<'_>) -> Result<Document<'_>, Error> {
+    fn ir_literal_to_doc(&mut self, literal: ir::Literal<'module>) -> Result<Document<'module>, Error> {
         Ok(match literal {
             ir::Literal::Bool { value } => if value { "true" } else { "false" }.to_doc(),
-            ir::Literal::Int { value } => value.to_doc(),
-            ir::Literal::Float { value } => value.to_doc(),
+            ir::Literal::Int { value } => Document::String(value.to_owned()),
+            ir::Literal::Float { value } => Document::String(value.to_owned()),
             ir::Literal::String { value } => {
                 Document::String(value).surround("gleam::MakeString(u8\"", "\")")
             }
@@ -90,28 +90,28 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn ir_call_to_doc(&mut self, call: &ir::Call<'_>) -> Result<Document<'_>, Error> {
+    fn ir_call_to_doc(&mut self, call: ir::Call<'module>) -> Result<Document<'module>, Error> {
         Ok(match call {
             ir::Call::Fn { callee, args } => {
                 let formatted_args = comma_seperate(
                     args.into_iter().map(|e| self.ir_expr_to_doc(e)).try_collect()?,
                 );
                 docvec![
-                    self.ir_expr_to_doc(&callee)?,
+                    self.ir_expr_to_doc(*callee)?,
                     "(",
-                    Document::Vec(formatted_args),
+                    formatted_args,
                     ")",
                 ]
             },
         })
     }
 
-    fn ir_accessor_to_doc(&mut self, accessor: &ir::Accessor<'_>) -> Result<Document<'_>, Error> {
+    fn ir_accessor_to_doc(&mut self, accessor: ir::Accessor<'module>) -> Result<Document<'module>, Error> {
         Ok(match accessor {
             ir::Accessor::Custom { label, reciever } => {
-                docvec![self.ir_expr_to_doc(&reciever)?, "->", label.to_doc()]
+                docvec![self.ir_expr_to_doc(*reciever)?, "->", label.to_doc()]
             },
-            ir::Accessor::TupleIndex { index, tuple } => self.ir_expr_to_doc(&tuple)?.surround(
+            ir::Accessor::TupleIndex { index, tuple } => self.ir_expr_to_doc(*tuple)?.surround(
                 docvec!["std::get<", Document::String(format!("{}", index)), ">("],
                 ")",
             ),
@@ -128,14 +128,14 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn ir_identifier_to_doc(&mut self, identifier: &ir::Identifier<'_>) -> Result<Document<'_>, Error> {
+    fn ir_identifier_to_doc(&mut self, identifier: ir::Identifier<'module>) -> Result<Document<'module>, Error> {
         todo!()
     }
 
     fn ir_type_construction_to_doc(
         &mut self,
-        construction: &ir::TypeConstruction<'_>,
-    ) -> Result<Document<'_>, Error> {
+        construction: ir::TypeConstruction<'module>,
+    ) -> Result<Document<'module>, Error> {
         Ok(match construction {
             ir::TypeConstruction::Tuple { typ, elements } => {
                 // TODO: Specify type args.
@@ -149,14 +149,17 @@ impl NativeIrCodeGenerator {
                 ]
             },
             ir::TypeConstruction::List { typ, elements, tail } => {
-                // TODO: Specify type args.
                 docvec![
-                    "gleam::MakeList",
-                    "(",
+                    "gleam::MakeList<",
+                    // todo!("type args"),
+                    ">(",
                     comma_seperate(
                         elements.into_iter().map(|e| self.ir_expr_to_doc(e)).try_collect()?
                     ),
-                    tail.map(|e| self.ir_expr_to_doc(&e)),
+                    tail.map(|e| {
+                        let t = self.ir_expr_to_doc(*e)?;
+                        Ok(break_(",", ", ").append(t))
+                    }).unwrap_or(Ok(nil()))?,
                     ")",
                 ]
             },
@@ -169,7 +172,7 @@ impl NativeIrCodeGenerator {
                 let statements = self.ir_to_doc(body)?;
                 docvec![
                     "[=](",
-                    function_args(args),
+                    self.function_args(args)?,
                     ") -> ",
                     self.typ_to_symbol(result_type)?,
                     " {",
@@ -181,7 +184,11 @@ impl NativeIrCodeGenerator {
         })
     }
 
-    fn wrap_expr(&mut self, expr: &ir::Expression<'_>) -> Result<Document<'_>, Error> {
+    fn function_args(&mut self, args: Vec<ir::FunctionArg<'module>>) -> Result<Document<'module>, Error> {
+        todo!()
+    }
+
+    fn wrap_expr(&mut self, expr: ir::Expression<'module>) -> Result<Document<'module>, Error> {
         let needs_wrap = match expr {
             ir::Expression::Literal(_) => false,
             ir::Expression::Accessor(ir::Accessor::LocalVariable { .. }) => false,
@@ -194,7 +201,7 @@ impl NativeIrCodeGenerator {
         return Ok(self.ir_expr_to_doc(expr)?.surround("(", ")"));
     }
 
-    fn typ_to_symbol(&mut self, typ: Arc<Type>) -> Result<Document<'_>, Error> {
+    fn typ_to_symbol(&mut self, typ: Arc<Type>) -> Result<Document<'module>, Error> {
         todo!()
     }
 
@@ -221,7 +228,7 @@ fn is_wrapped_binop_child_expression(expr: &TypedExpr) -> bool {
     }
 }
 
-fn generate_bin_op(op: &BinOp) -> Result<&'static str, Error> {
+fn generate_bin_op(op: BinOp) -> Result<&'static str, Error> {
     Ok(match op {
         BinOp::Eq => "==",
         BinOp::NotEq => "!=",

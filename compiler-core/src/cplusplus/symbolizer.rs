@@ -5,7 +5,9 @@ pub(crate) struct Symbolizer {
 }
 
 impl Symbolizer {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Symbolizer {  }
     }
+
+
 }
