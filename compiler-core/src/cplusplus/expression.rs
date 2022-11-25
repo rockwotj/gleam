@@ -13,12 +13,11 @@ use std::sync::Arc;
 use std::vec::Vec;
 
 pub struct NativeIrCodeGenerator {
-    scope: LexicalScope,
 }
 
 impl NativeIrCodeGenerator {
-    pub fn new(scope: LexicalScope) -> Self {
-        return NativeIrCodeGenerator { scope };
+    pub fn new() -> Self {
+        return NativeIrCodeGenerator { };
     }
 
     pub fn ir_to_doc(&mut self, statements: &Vec<ir::Statement<'_>>) -> Result<Document<'_>, Error> {
@@ -68,13 +67,13 @@ impl NativeIrCodeGenerator {
             }
             ir::Expression::BinOp { left, op, right } => {
                 docvec![
-                    self.wrap_expr(*left)?,
+                    self.wrap_expr(&left)?,
                     generate_bin_op(&op)?,
-                    self.wrap_expr(*right)?,
+                    self.wrap_expr(&right)?,
                 ]
             }
             ir::Expression::UnaryOp { op, expr } => {
-                docvec![self.generate_unary_op(op)?, self.wrap_expr(*expr)?]
+                docvec![self.generate_unary_op(op)?, self.wrap_expr(&expr)?]
             }
         })
     }
@@ -94,11 +93,11 @@ impl NativeIrCodeGenerator {
     fn ir_call_to_doc(&mut self, call: &ir::Call<'_>) -> Result<Document<'_>, Error> {
         Ok(match call {
             ir::Call::Fn { callee, args } => {
-                let formatted_args = comma_seperate_results(
-                    args.into_iter().map(|e| self.ir_expr_to_doc(e)),
-                ).try_collect()?;
+                let formatted_args = comma_seperate(
+                    args.into_iter().map(|e| self.ir_expr_to_doc(e)).try_collect()?,
+                );
                 docvec![
-                    self.ir_expr_to_doc(*callee)?,
+                    self.ir_expr_to_doc(&callee)?,
                     "(",
                     Document::Vec(formatted_args),
                     ")",
@@ -110,9 +109,9 @@ impl NativeIrCodeGenerator {
     fn ir_accessor_to_doc(&mut self, accessor: &ir::Accessor<'_>) -> Result<Document<'_>, Error> {
         Ok(match accessor {
             ir::Accessor::Custom { label, reciever } => {
-                docvec![self.ir_expr_to_doc(*reciever)?, "->", label.to_doc()]
+                docvec![self.ir_expr_to_doc(&reciever)?, "->", label.to_doc()]
             },
-            ir::Accessor::TupleIndex { index, tuple } => self.ir_expr_to_doc(*tuple)?.surround(
+            ir::Accessor::TupleIndex { index, tuple } => self.ir_expr_to_doc(&tuple)?.surround(
                 docvec!["std::get<", Document::String(format!("{}", index)), ">("],
                 ")",
             ),
@@ -157,7 +156,7 @@ impl NativeIrCodeGenerator {
                     comma_seperate(
                         elements.into_iter().map(|e| self.ir_expr_to_doc(e)).try_collect()?
                     ),
-                    tail.map(|e| self.ir_expr_to_doc(e)),
+                    tail.map(|e| self.ir_expr_to_doc(&e)),
                     ")",
                 ]
             },

@@ -1,8 +1,10 @@
 use crate::ast;
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use crate::uid::UniqueIdGenerator;
+use im;
 use std::sync::Arc;
 use std::vec::Vec;
+use tracing::Id;
 
 /// # An intermediate representation (IR) of Gleam's AST for a "simple" procedural language.
 ///
@@ -142,10 +144,20 @@ pub struct FunctionArg<'a> {
     typ: Arc<Type>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Identifier<'a> {
     /// A name that came from the source (or as result of syntax sugar expansion).
-    Named(&'a str),
+    /// The number is the times that the variable has been declared in the current scope.
+    /// For example - Gleam allows for a sequence like so:
+    /// ```gleam
+    /// let a = 5
+    /// let a = "foo"
+    /// let a = True
+    /// ```
+    ///
+    /// In our IR, we represent `a` as `Named("a", 0)`, `Named("a", 1)` and `Named("a", 2)`
+    /// for target languages that don't support redeclaring variables within the same scope.
+    Named(&'a str, u64),
     /// An  name that is required for the purposes of the IR, but did not originate from the source
     /// program. Codegen backends should emit a variable that makes the most sense for that target.
     Internal(u64),
@@ -175,19 +187,21 @@ pub enum BuiltinFn {
 }
 
 #[derive(Debug)]
-pub struct IntermediateRepresentationConverter {
+pub struct IntermediateRepresentationConverter<'module> {
     internal_variable_id_generator: UniqueIdGenerator,
+    current_scope_vars: im::HashMap<&'module str, u64>,
 }
 
-impl IntermediateRepresentationConverter {
+impl<'module> IntermediateRepresentationConverter<'module> {
     pub fn new() -> Self {
         return IntermediateRepresentationConverter {
             internal_variable_id_generator: UniqueIdGenerator::new(),
+            current_scope_vars: im::HashMap::new(),
         };
     }
     /// Converts a typed expression that represents the body of a function call in gleam to a
     /// procedural IR.
-    pub fn ast_to_ir(&mut self, expr: &ast::TypedExpr) -> Vec<Statement<'_>> {
+    pub fn ast_to_ir(&mut self, expr: &'module ast::TypedExpr) -> Vec<Statement<'module>> {
         match expr {
             ast::TypedExpr::Sequence { expressions, .. }
             | ast::TypedExpr::Pipeline { expressions, .. } => {
@@ -197,7 +211,10 @@ impl IntermediateRepresentationConverter {
         }
     }
 
-    fn convert_top_level_exprs_to_ir(&mut self, exprs: &[ast::TypedExpr]) -> Vec<Statement<'_>> {
+    fn convert_top_level_exprs_to_ir(
+        &mut self,
+        exprs: &'module [ast::TypedExpr],
+    ) -> Vec<Statement<'module>> {
         let last_index = exprs.len() - 1;
         exprs
             .iter()
@@ -208,9 +225,9 @@ impl IntermediateRepresentationConverter {
 
     fn convert_top_level_expr_to_ir(
         &mut self,
-        expr: &ast::TypedExpr,
+        expr: &'module ast::TypedExpr,
         is_in_return_position: bool,
-    ) -> Vec<Statement<'_>> {
+    ) -> Vec<Statement<'module>> {
         match expr {
             ast::TypedExpr::Assignment {
                 typ,
@@ -220,14 +237,14 @@ impl IntermediateRepresentationConverter {
                 ..
             } => {
                 let mut assignment = vec![Statement::Assignment {
-                    var: Identifier::Named(name),
+                    var: self.allocate_named_id(name),
                     expr: self.convert_expr_to_ir(value),
                     typ: typ.to_owned(),
                 }];
                 if is_in_return_position {
                     assignment.push(Statement::Return {
                         expr: Expression::Accessor(Accessor::LocalVariable {
-                            name: Identifier::Named(name),
+                            name: self.lookup_named_id(name),
                             typ: typ.to_owned(),
                         }),
                     })
@@ -253,14 +270,10 @@ impl IntermediateRepresentationConverter {
         }
     }
 
-    fn convert_expr_to_ir(&mut self, expr: &ast::TypedExpr) -> Expression<'_> {
+    fn convert_expr_to_ir(&mut self, expr: &'module ast::TypedExpr) -> Expression<'module> {
         match expr {
-            ast::TypedExpr::Int { value, .. } => Expression::Literal(Literal::Int {
-                value,
-            }),
-            ast::TypedExpr::Float { value, .. } => Expression::Literal(Literal::Float {
-                value,
-            }),
+            ast::TypedExpr::Int { value, .. } => Expression::Literal(Literal::Int { value }),
+            ast::TypedExpr::Float { value, .. } => Expression::Literal(Literal::Float { value }),
             ast::TypedExpr::String { value, .. } => Expression::Literal(Literal::String {
                 value: value.replace("\n", r#"\n"#),
             }),
@@ -345,21 +358,23 @@ impl IntermediateRepresentationConverter {
             // The rest here are things that cannot be represented as expressions in our IR, so we
             // wrap them in blocks that are immediately invoked functions.
             ast::TypedExpr::Sequence { expressions, .. }
-            | ast::TypedExpr::Pipeline { expressions, .. } => wrap_in_block(
-                expr.type_(),
-                self.convert_top_level_exprs_to_ir(expressions),
-            ),
+            | ast::TypedExpr::Pipeline { expressions, .. } => self
+                .wrap_in_block(expr.type_(), || {
+                    self.convert_top_level_exprs_to_ir(expressions)
+                }),
             ast::TypedExpr::Assignment { .. }
             | ast::TypedExpr::Try { .. }
-            | ast::TypedExpr::Case { .. } => wrap_in_block(expr.type_(), self.ast_to_ir(expr)),
+            | ast::TypedExpr::Case { .. } => {
+                self.wrap_in_block(expr.type_(), || self.ast_to_ir(expr))
+            }
         }
     }
 
     fn convert_call_to_ir(
         &mut self,
-        fun: &ast::TypedExpr,
-        args: &[ast::CallArg<ast::TypedExpr>],
-    ) -> Expression<'_> {
+        fun: &'module ast::TypedExpr,
+        args: &'module [ast::CallArg<ast::TypedExpr>],
+    ) -> Expression<'module> {
         let args: Vec<_> = args
             .iter()
             .map(|arg| self.convert_expr_to_ir(&arg.value))
@@ -405,27 +420,33 @@ impl IntermediateRepresentationConverter {
 
     fn convert_fn_to_ir(
         &mut self,
-        typ: &Arc<Type>,
-        args: &Vec<ast::Arg<Arc<Type>>>,
-        body: &ast::TypedExpr,
-    ) -> Expression<'_> {
-        Expression::TypeConstruction(TypeConstruction::Function {
-            typ: typ.to_owned(),
-            args: args
-                .iter()
-                .map(|arg| FunctionArg {
-                    name: match arg.get_variable_name() {
-                        Some(name) => Identifier::Named(name),
-                        None => Identifier::Discard,
-                    },
-                    typ: arg.type_.to_owned(),
-                })
-                .collect(),
-            body: self.ast_to_ir(body),
+        typ: &'module Arc<Type>,
+        args: &'module Vec<ast::Arg<Arc<Type>>>,
+        body: &'module ast::TypedExpr,
+    ) -> Expression<'module> {
+        self.with_new_scope(|| {
+            Expression::TypeConstruction(TypeConstruction::Function {
+                typ: typ.to_owned(),
+                args: args
+                    .iter()
+                    .map(|arg| FunctionArg {
+                        name: match arg.get_variable_name() {
+                            Some(name) => self.allocate_named_id(name),
+                            None => Identifier::Discard,
+                        },
+                        typ: arg.type_.to_owned(),
+                    })
+                    .collect(),
+                body: self.ast_to_ir(body),
+            })
         })
     }
 
-    fn convert_variable_to_ir(&mut self, name: &str, constructor: &ValueConstructor) -> Expression<'_> {
+    fn convert_variable_to_ir(
+        &mut self,
+        name: &'module str,
+        constructor: &'module ValueConstructor,
+    ) -> Expression<'module> {
         match constructor {
             ValueConstructor {
                 public,
@@ -533,31 +554,59 @@ impl IntermediateRepresentationConverter {
                 type_,
                 ..
             } => Expression::Accessor(Accessor::LocalVariable {
-                name: Identifier::Named(name),
+                name: self.lookup_named_id(name),
                 typ: type_.to_owned(),
             }),
         }
     }
 
-    fn generate_internal_id(&mut self) -> Identifier<'_> {
+    fn generate_internal_id(&mut self) -> Identifier<'module> {
         Identifier::Internal(self.internal_variable_id_generator.next())
     }
-}
+    fn lookup_named_id(&mut self, name: &'module str) -> Identifier<'module> {
+        match self.current_scope_vars.get(name) {
+            None => todo!("Unexpected missing scope var"),
+            Some(id) => Identifier::Named(name, *id),
+        }
+    }
+    fn allocate_named_id(&mut self, name: &'module str) -> Identifier<'module> {
+        let n = match self.current_scope_vars.get(name) {
+            None => 0,
+            Some(n) => *n + 1,
+        };
+        self.current_scope_vars.insert(name, n);
+        Identifier::Named(name, n)
+    }
+    fn with_new_scope<Block, Output>(&mut self, block: Block) -> Output
+    where
+        Block: Fn() -> Output,
+    {
+        let parent_scope = self.current_scope_vars;
+        let child_scope = parent_scope.clone();
+        self.current_scope_vars = child_scope;
+        let result = block();
+        self.current_scope_vars = parent_scope;
+        result
+    }
 
-/// Some expressions can only be converted into statements, so we need to wrap the statements
-/// within a function.
-fn wrap_in_block(typ: Arc<Type>, expr: Vec<Statement<'_>>) -> Expression<'_> {
-    Expression::Call(Call::Fn {
-        args: vec![],
-        callee: Box::new(Expression::TypeConstruction(TypeConstruction::Function {
-            typ: Arc::new(Type::Fn {
-                args: vec![],
-                retrn: typ,
-            }),
+    /// Some expressions can only be converted into statements, so we need to wrap the statements
+    /// within a function.
+    fn wrap_in_block<Block>(&mut self, typ: Arc<Type>, expr: Block) -> Expression<'module>
+    where
+        Block: Fn() -> Vec<Statement<'module>>,
+    {
+        Expression::Call(Call::Fn {
             args: vec![],
-            body: expr,
-        })),
-    })
+            callee: Box::new(Expression::TypeConstruction(TypeConstruction::Function {
+                typ: Arc::new(Type::Fn {
+                    args: vec![],
+                    retrn: typ,
+                }),
+                args: vec![],
+                body: self.with_new_scope(expr),
+            })),
+        })
+    }
 }
 
 fn split_module_name(module: &str) -> Vec<&str> {
