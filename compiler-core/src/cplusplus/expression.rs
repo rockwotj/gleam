@@ -179,9 +179,9 @@ impl<'module> NativeIrCodeGenerator {
     ) -> Result<Document<'module>, Error> {
         Ok(match construction {
             ir::TypeConstruction::Tuple { typ, elements } => {
-                // TODO: Specify type args.
                 docvec![
                     "gleam::MakeTuple",
+                    self.symbolizer.to_symbol_args(&typ)?,
                     "(",
                     comma_seperate(
                         elements
@@ -198,9 +198,9 @@ impl<'module> NativeIrCodeGenerator {
                 tail,
             } => {
                 docvec![
-                    "gleam::MakeList<",
-                    // todo!("type args"),
-                    ">(",
+                    "gleam::MakeList",
+                    self.symbolizer.to_symbol_args(&typ)?,
+                    "(",
                     comma_seperate(
                         elements
                             .into_iter()
@@ -220,8 +220,8 @@ impl<'module> NativeIrCodeGenerator {
                 module,
                 module_alias,
                 name,
-                typ,
                 args,
+                ..
             } => {
                 docvec![
                     "gleam::MakeRef<",
@@ -236,8 +236,14 @@ impl<'module> NativeIrCodeGenerator {
                 module,
                 module_alias,
                 name,
-                typ,
-            } => todo!(),
+                ..
+            } => {
+                docvec![
+                    "gleam::MakeRef<",
+                    self.module_symbol(name, public, &module[..], module_alias)?,
+                    ">()",
+                ]
+            },
             ir::TypeConstruction::Function { typ, args, body } => {
                 let (_, result_type) = typ.fn_types().ok_or(Error::InternalError {
                     message: format!("Unexpected type for function: {:?}", typ),
@@ -284,7 +290,7 @@ impl<'module> NativeIrCodeGenerator {
                      name: &str,
                      public: bool,
                      module: &[&str],
-                     module_alias: Option<&str>,
+                     _module_alias: Option<&str>,
                      ) -> Result<Document<'module>, Error> {
         let v = vec![];
         self.symbolizer.to_app_symbol(name, public, &module[..], &v)
