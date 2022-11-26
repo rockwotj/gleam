@@ -160,7 +160,7 @@ pub enum Identifier<'a> {
     /// program. Codegen backends should emit a variable that makes the most sense for that target.
     Internal(u64),
     /// An unused idenfitier.
-    Discard,
+    Discard(u64),
 }
 
 #[derive(Debug, Clone)]
@@ -187,6 +187,7 @@ pub enum BuiltinFn {
 #[derive(Debug)]
 pub struct IntermediateRepresentationConverter<'module> {
     internal_variable_id_generator: UniqueIdGenerator,
+    discard_variable_id_generator: UniqueIdGenerator,
     current_scope_vars: im::HashMap<&'module str, u64>,
 }
 
@@ -200,6 +201,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
         }
         return IntermediateRepresentationConverter {
             internal_variable_id_generator: UniqueIdGenerator::new(),
+            discard_variable_id_generator: UniqueIdGenerator::new(),
             current_scope_vars,
         };
     }
@@ -436,7 +438,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
                     .map(|arg| FunctionArg {
                         name: match arg.get_variable_name() {
                             Some(name) => conv.allocate_named_id(name),
-                            None => Identifier::Discard,
+                            None => conv.allocate_discard_id(),
                         },
                         typ: arg.type_.to_owned(),
                     })
@@ -503,7 +505,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
                 let args: Vec<_> = args
                     .into_iter()
                     .map(|typ| FunctionArg {
-                        name: self.generate_internal_id(),
+                        name: self.allocate_internal_id(),
                         typ,
                     })
                     .collect();
@@ -564,11 +566,17 @@ impl<'module> IntermediateRepresentationConverter<'module> {
         }
     }
 
-    fn generate_internal_id(&mut self) -> Identifier<'module> {
+    fn allocate_internal_id(&mut self) -> Identifier<'module> {
         Identifier::Internal(self.internal_variable_id_generator.next())
     }
+    fn allocate_discard_id(&mut self) -> Identifier<'module> {
+        Identifier::Discard(self.discard_variable_id_generator.next())
+    }
     fn lookup_named_id(&mut self, name: &'module str) -> Identifier<'module> {
-        let id = self.current_scope_vars.get(name).expect("Unexpected missing scope variable");
+        let id = self
+            .current_scope_vars
+            .get(name)
+            .expect("Unexpected missing scope variable");
         return Identifier::Named(name, *id);
     }
     fn allocate_named_id(&mut self, name: &'module str) -> Identifier<'module> {
@@ -579,7 +587,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
         let _ = self.current_scope_vars.insert(name, n);
         Identifier::Named(name, n)
     }
-    fn with_new_scope<Block, Output>(& mut self, block: Block) -> Output
+    fn with_new_scope<Block, Output>(&mut self, block: Block) -> Output
     where
         Block: Fn(&mut Self) -> Output,
     {

@@ -64,7 +64,7 @@ pub(crate) fn implementation<'a>(statement: &'a TypedStatement) -> Result<Option
             Some(docvec![
                 function_signature(name, arguments, return_type),
                 " {",
-                doc.nest(INDENT).group(),
+                line().append(doc).nest(INDENT).group(),
                 line(),
                 "};"
             ])
