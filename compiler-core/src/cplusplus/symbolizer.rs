@@ -39,7 +39,7 @@ impl Symbolizer {
                             }),
                         })
                         .collect();
-                    let sym = self.to_app_symbol(name, *public, module, &linked)?;
+                    let sym = self.to_app_symbol(name, *public, &module[..], &linked)?;
                     sym.surround("gleam::Ref<", ">")
                 }
                 Type::Fn { args, retrn } => self.function_type(retrn, args)?,
@@ -68,17 +68,17 @@ impl Symbolizer {
         Ok(doc.append(">"))
     }
 
-    pub fn to_app_symbol<'a, 'b>(
+    pub fn to_app_symbol<'a, 'b, S: AsRef<str>>(
         &mut self,
         name: &'a str,
         public: bool,
-        module: &'a [String],
+        module: &'a [S],
         args: &'a [Arc<Type>],
     ) -> Result<Document<'b>, Error> {
         let mut doc = if module.is_empty() {
             "gleam::".to_doc()
         } else {
-            Document::String(module.join("::")).surround("::", "::")
+            Document::String(module.iter().map(|s| s.as_ref()).join("::")).surround("::", "::")
         };
         if !public {
             doc = doc.append("_private::");

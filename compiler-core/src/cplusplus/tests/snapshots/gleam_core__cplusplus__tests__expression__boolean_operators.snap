@@ -28,35 +28,15 @@ namespace my {
 namespace module {
 
 bool or_op(int64_t x, int64_t y) {
-  bool tmp = x < 5;
-  if (!tmp) {
-    tmp = y < 10;
-  }
-  return tmp;
+  return (x < 5) || (y < 10);
 };
 
 bool and_op(int64_t x, int64_t y) {
-  bool tmp = x < 5;
-  if (tmp) {
-    tmp = y < 10;
-  }
-  return tmp;
+  return (x < 5) && (y < 10);
 };
 
 bool both_ops(int64_t x, int64_t y) {
-  bool tmp = x < 5;
-  if (!tmp) {
-    tmp = y < 10;
-  }
-  bool tmp$1 = tmp;
-  if (tmp$1) {
-    bool tmp$2 = x > 5;
-    if (!tmp$2) {
-      tmp$2 = y > 10;
-    }
-    tmp$1 = tmp$2;
-  }
-  return tmp$1;
+  return ((x < 5) || (y < 10)) && ((x > 5) || (y > 10));
 };
 
 } // namespace my

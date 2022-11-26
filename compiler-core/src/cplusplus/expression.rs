@@ -1,5 +1,5 @@
-use crate::cplusplus::error::Error;
 use crate::ast;
+use crate::cplusplus::error::Error;
 use crate::cplusplus::symbolizer::Symbolizer;
 use crate::cplusplus::INDENT;
 use crate::docvec;
@@ -128,7 +128,7 @@ impl<'module> NativeIrCodeGenerator {
                 docvec![self.ir_expr_to_doc(*reciever)?, "->", label.to_doc()]
             }
             ir::Accessor::TupleIndex { index, tuple } => self.ir_expr_to_doc(*tuple)?.surround(
-                docvec!["std::get<", Document::String(format!("{}", index)), ">("],
+                docvec!["gleam::Get<", Document::String(format!("{}", index)), ">("],
                 ")",
             ),
             ir::Accessor::LocalVariable { name, .. } => self.ir_identifier_to_doc(name)?,
@@ -137,9 +137,9 @@ impl<'module> NativeIrCodeGenerator {
                 module,
                 module_alias,
                 name,
-                typ,
+                ..
             } => {
-                todo!()
+                self.module_symbol(name, public, &module[..], module_alias)?
             }
         })
     }
@@ -155,7 +155,7 @@ impl<'module> NativeIrCodeGenerator {
                 } else {
                     docvec![name, "$", count]
                 }
-            },
+            }
             ir::Identifier::Internal(count) => {
                 if count == 0 {
                     "_tmp$$".to_doc()
@@ -222,7 +222,15 @@ impl<'module> NativeIrCodeGenerator {
                 name,
                 typ,
                 args,
-            } => todo!(),
+            } => {
+                docvec![
+                    "gleam::MakeRef<",
+                    self.module_symbol(name, public, &module[..], module_alias)?,
+                    ">(",
+                    comma_seperate(args.into_iter().map(|e| self.ir_expr_to_doc(e)).try_collect()?),
+                    ")",
+                ]
+            },
             ir::TypeConstruction::CustomSingleton {
                 public,
                 module,
@@ -271,6 +279,15 @@ impl<'module> NativeIrCodeGenerator {
 
     fn typ_to_symbol(&mut self, typ: Arc<Type>) -> Result<Document<'module>, Error> {
         return self.symbolizer.to_symbol(&typ);
+    }
+    fn module_symbol(&mut self, 
+                     name: &str,
+                     public: bool,
+                     module: &[&str],
+                     module_alias: Option<&str>,
+                     ) -> Result<Document<'module>, Error> {
+        let v = vec![];
+        self.symbolizer.to_app_symbol(name, public, &module[..], &v)
     }
 
     fn generate_unary_op(&mut self, op: ir::UnaryOp) -> Result<&'static str, Error> {

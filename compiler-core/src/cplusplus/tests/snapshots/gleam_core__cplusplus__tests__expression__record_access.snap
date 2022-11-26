@@ -36,7 +36,7 @@ namespace my {
 namespace module {
 
 int64_t next_age(gleam::Ref<::my::module::Person> person) {
-  return person->age() + 1;
+  return (person->age) + 1;
 };
 
 } // namespace my
