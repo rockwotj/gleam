@@ -142,7 +142,7 @@ pub struct FunctionArg<'a> {
     pub typ: Arc<Type>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Identifier<'a> {
     /// A name that came from the source (or as result of syntax sugar expansion).
     /// The number is the times that the variable has been declared in the current scope.
@@ -199,11 +199,11 @@ impl<'module> IntermediateRepresentationConverter<'module> {
                 let _ = current_scope_vars.insert(name, 0);
             }
         }
-        return IntermediateRepresentationConverter {
+        IntermediateRepresentationConverter {
             internal_variable_id_generator: UniqueIdGenerator::new(),
             discard_variable_id_generator: UniqueIdGenerator::new(),
             current_scope_vars,
-        };
+        }
     }
     /// Converts a typed expression that represents the body of a function call in gleam to a
     /// procedural IR.
@@ -265,8 +265,11 @@ impl<'module> IntermediateRepresentationConverter<'module> {
             // in a block.
             ast::TypedExpr::Sequence { expressions, .. }
             | ast::TypedExpr::Pipeline { expressions, .. } => {
-                self.convert_top_level_exprs_to_ir(&expressions)
+                self.convert_top_level_exprs_to_ir(expressions)
             }
+            ast::TypedExpr::Case { .. } => {
+                todo!()
+            },
             _ if is_in_return_position => vec![Statement::Return {
                 expr: self.convert_expr_to_ir(expr),
             }],
@@ -281,7 +284,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
             ast::TypedExpr::Int { value, .. } => Expression::Literal(Literal::Int { value }),
             ast::TypedExpr::Float { value, .. } => Expression::Literal(Literal::Float { value }),
             ast::TypedExpr::String { value, .. } => Expression::Literal(Literal::String {
-                value: value.replace("\n", r#"\n"#),
+                value: value.replace('\n', r#"\n"#),
             }),
             ast::TypedExpr::BinOp {
                 name, left, right, ..
@@ -330,7 +333,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
                 ..
             } => Expression::Accessor(Accessor::ModuleVariable {
                 public: true,
-                module: split_module_name(&module_name),
+                module: split_module_name(module_name),
                 module_alias: Some(module_alias),
                 name: label,
                 typ: typ.to_owned(),
@@ -339,10 +342,6 @@ impl<'module> IntermediateRepresentationConverter<'module> {
             // see convert_variable_to_ir
             // TODO: Does this need to handle Singletons or does the above?
             ast::TypedExpr::ModuleSelect {
-                module_alias,
-                typ,
-                module_name,
-                label,
                 constructor: ModuleValueConstructor::Record { .. },
                 ..
             } => todo!(),
@@ -430,7 +429,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
     fn convert_fn_to_ir(
         &mut self,
         typ: &'module Arc<Type>,
-        args: &'module Vec<ast::Arg<Arc<Type>>>,
+        args: &'module [ast::Arg<Arc<Type>>],
         body: &'module ast::TypedExpr,
     ) -> Expression<'module> {
         self.with_new_scope(|conv| {
@@ -582,7 +581,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
             .current_scope_vars
             .get(name)
             .expect("Unexpected missing scope variable");
-        return Identifier::Named(name, *id);
+        Identifier::Named(name, *id)
     }
     fn allocate_named_id(&mut self, name: &'module str) -> Identifier<'module> {
         let n = match self.current_scope_vars.get(name) {

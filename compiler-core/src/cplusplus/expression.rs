@@ -16,9 +16,9 @@ pub struct NativeIrCodeGenerator {
 
 impl<'module> NativeIrCodeGenerator {
     pub fn new() -> Self {
-        return NativeIrCodeGenerator {
+        NativeIrCodeGenerator {
             symbolizer: Symbolizer::new(),
-        };
+        }
     }
 
     pub fn ir_to_doc(
@@ -179,7 +179,7 @@ impl<'module> NativeIrCodeGenerator {
             ir::TypeConstruction::Tuple { typ, elements } => {
                 docvec![
                     "gleam::MakeTuple",
-                    self.symbolizer.to_symbol_args(&typ)?,
+                    self.symbolizer.symbol_args(&typ)?,
                     "(",
                     comma_seperate(
                         elements
@@ -197,7 +197,7 @@ impl<'module> NativeIrCodeGenerator {
             } => {
                 docvec![
                     "gleam::MakeList",
-                    self.symbolizer.to_symbol_args(&typ)?,
+                    self.symbolizer.symbol_args(&typ)?,
                     "(",
                     docvec![
                         comma_seperate(
@@ -211,7 +211,7 @@ impl<'module> NativeIrCodeGenerator {
                             let t = self.ir_expr_to_doc(*e)?;
                             Ok(break_(",", ", ").append(t))
                         })
-                        .unwrap_or(Ok(nil()))?,
+                        .unwrap_or_else(|| Ok(nil()))?,
                     ]
                     .nest(INDENT)
                     .group(),
@@ -277,7 +277,7 @@ impl<'module> NativeIrCodeGenerator {
         let mut arg_docs = vec![];
         for arg in args {
             arg_docs.push(docvec![
-                self.symbolizer.to_symbol(&arg.typ)?,
+                self.symbolizer.type_to_symbol(&arg.typ)?,
                 " ",
                 self.ir_identifier_to_doc(arg.name)?,
             ]);
@@ -286,12 +286,13 @@ impl<'module> NativeIrCodeGenerator {
     }
 
     fn wrap_expr(&mut self, expr: ir::Expression<'module>) -> Result<Document<'module>, Error> {
-        let needs_wrap = match expr {
-            ir::Expression::Literal(_) => false,
-            ir::Expression::Accessor(ir::Accessor::LocalVariable { .. }) => false,
-            ir::Expression::Accessor(ir::Accessor::ModuleVariable { .. }) => false,
-            _ => true,
-        };
+        let needs_wrap = !matches!(
+            expr,
+            ir::Expression::Literal(_)
+                | ir::Expression::Accessor(
+                    ir::Accessor::LocalVariable { .. } | ir::Accessor::ModuleVariable { .. }
+                )
+        );
         if !needs_wrap {
             return self.ir_expr_to_doc(expr);
         }
@@ -299,8 +300,9 @@ impl<'module> NativeIrCodeGenerator {
     }
 
     fn typ_to_symbol(&mut self, typ: Arc<Type>) -> Result<Document<'module>, Error> {
-        return self.symbolizer.to_symbol(&typ);
+        self.symbolizer.type_to_symbol(&typ)
     }
+
     fn module_symbol(
         &mut self,
         name: &str,
@@ -312,7 +314,7 @@ impl<'module> NativeIrCodeGenerator {
         let args = self.symbolizer.extract_symbol_args(typ);
         let variant_name = format!("{}${}", name, self.symbolizer.app_symbol_name(typ)?);
         self.symbolizer
-            .to_app_symbol(&variant_name, public, &module[..], &args)
+            .app_symbol(&variant_name, public, module, &args)
     }
 
     fn generate_unary_op(&mut self, op: ir::UnaryOp) -> Result<&'static str, Error> {

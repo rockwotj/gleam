@@ -1,4 +1,4 @@
-use crate::ast::{Arg, RecordConstructor, RecordConstructorArg, TypedStatement};
+use crate::ast::{Arg, TypedStatement};
 use crate::cplusplus::error::Error;
 use crate::cplusplus::expression::*;
 use crate::cplusplus::INDENT;
@@ -47,7 +47,7 @@ impl<'a> Declaration<'a> {
     }
 }
 
-pub(crate) fn implementation<'a>(statement: &'a TypedStatement) -> Result<Option<Document<'a>>, Error> {
+pub(crate) fn implementation(statement: &TypedStatement) -> Result<Option<Document<'_>>, Error> {
     Ok(match statement {
         TypedStatement::Fn {
             name,
@@ -57,7 +57,7 @@ pub(crate) fn implementation<'a>(statement: &'a TypedStatement) -> Result<Option
             ..
         } => {
 
-            let mut ir_generator = IntermediateRepresentationConverter::new_for_function(&arguments);
+            let mut ir_generator = IntermediateRepresentationConverter::new_for_function(arguments);
             let ir = ir_generator.ast_to_ir(body);
 
             let mut generator = NativeIrCodeGenerator::new();
@@ -292,6 +292,3 @@ fn generate_generic_type_param<'a>(id: u64) -> Document<'a> {
     Document::String(format!("T${}", id))
 }
 
-fn comma_seperate(elements: Vec<Document<'_>>) -> Document<'_> {
-    Document::Vec(Itertools::intersperse(elements.into_iter(), break_(",", ", ")).collect())
-}

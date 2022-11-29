@@ -23,7 +23,7 @@ enum StructType<'a> {
 }
 
 impl<'a> StructType<'a> {
-    fn is_shared_field<'b>(&self, name: &'b str) -> bool {
+    fn is_shared_field(&self, name: &'_ str) -> bool {
         match self {
             StructType::SuperType => false,
             StructType::Variant { shared, .. } => shared.names.contains(name),
@@ -108,7 +108,7 @@ impl StructGenerator {
                 Some(label) => label.clone(),
                 None => format!("_${}", i),
             });
-            let typ = self.symbolizer.to_symbol(&field.type_)?;
+            let typ = self.symbolizer.type_to_symbol(&field.type_)?;
             constructor_args.push(docvec![typ.clone(), " ", name.clone()]);
             let is_shared_member = field
                 .label
@@ -126,7 +126,7 @@ impl StructGenerator {
         let mut super_declaration = nil();
         if let StructType::Variant { supertype_name, .. } = supertype {
             let super_name_doc = Document::String((*supertype_name).to_owned());
-            let super_type_args = self.symbolizer.to_app_symbol_args(typed_parameters)?;
+            let super_type_args = self.symbolizer.app_symbol_args(typed_parameters)?;
             let super_initializer = docvec![
                 super_name_doc.clone(),
                 super_type_args.clone(),

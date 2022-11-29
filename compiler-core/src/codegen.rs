@@ -1,6 +1,6 @@
 use crate::{
     build::Module,
-    config::{PackageConfig},
+    config::PackageConfig,
     cplusplus, erlang,
     io::{FileSystemWriter, Utf8Writer},
     javascript,
