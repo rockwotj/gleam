@@ -10,7 +10,7 @@ expression: "\npub fn palindrome(x: String, y: String, z: String) -> List(String
 namespace my {
 namespace module {
 
-gleam::Ref<gleam::List> palindrome(gleam::String x, gleam::String y, gleam::String z);
+gleam::Ref<gleam::List<gleam::String>> palindrome(gleam::String x, gleam::String y, gleam::String z);
 
 } // namespace my
 } // namespace module
@@ -23,12 +23,8 @@ gleam::Ref<gleam::List> palindrome(gleam::String x, gleam::String y, gleam::Stri
 namespace my {
 namespace module {
 
-gleam::Ref<gleam::List> palindrome(gleam::String x, gleam::String y, gleam::String z) {
-  return gleam::MakeList<gleam::String>({x,
-  y,
-  z,
-  y,
-  x});
+gleam::Ref<gleam::List<gleam::String>> palindrome(gleam::String x, gleam::String y, gleam::String z) {
+  return gleam::MakeList<gleam::String>({x, y, z, y, x});
 };
 
 } // namespace my

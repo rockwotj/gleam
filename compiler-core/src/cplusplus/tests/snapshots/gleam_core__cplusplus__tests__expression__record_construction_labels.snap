@@ -10,20 +10,24 @@ expression: "\npub type Person {\n  Person(name: String, age: Int)\n}\n\npub fn 
 namespace my {
 namespace module {
 
-class Person;
+struct Person;
+struct Person$Person;
 
 int64_t increment(int64_t n);
 
 gleam::Ref<::my::module::Person> birthday(gleam::Ref<::my::module::Person> person);
 
-class Person {
-public:
-  Person(gleam::String name, int64_t age) : m$name(name), m$age(age) {}
-  gleam::String name() const { return m$name; }
-  int64_t age() const { return m$age; }
-private:
-  gleam::String m$name;
-  int64_t m$age;
+struct Person {
+  explicit Person(gleam::String name, int64_t age) : name(name), age(age) {}
+  virtual ~Person() = default;
+  gleam::String name;
+  int64_t age;
+};
+
+struct Person$Person : public Person {
+  explicit Person$Person(gleam::String name, int64_t age) : Person(name, age) {}
+  
+  
 };
 
 } // namespace my
@@ -42,9 +46,8 @@ int64_t increment(int64_t n) {
 };
 
 gleam::Ref<::my::module::Person> birthday(gleam::Ref<::my::module::Person> person) {
-  int64_t next_age = ::my::module::increment(person->age());
-  return gleam::MakeRef<::my::module::Person>(person->name(),
-  next_age);
+  int64_t next_age = ::my::module::increment(person->age);
+  return gleam::MakeRef<::my::module::Person$Person>(person->name, next_age);
 };
 
 } // namespace my

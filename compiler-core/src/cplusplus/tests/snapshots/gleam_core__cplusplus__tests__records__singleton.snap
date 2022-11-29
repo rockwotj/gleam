@@ -10,15 +10,20 @@ expression: "\npub type Void { Void }\n\nfn noop() -> Void {\n  let v = Void;\n 
 namespace my {
 namespace module {
 
-class Void;
+struct Void;
+struct Void$Void;
 
 gleam::Ref<::my::module::Void> noop();
 
-class Void {
-public:
-  Void() {}
+struct Void {
+  explicit Void() {}
+  virtual ~Void() = default;
   
-private:
+};
+
+struct Void$Void : public Void {
+  explicit Void$Void() : Void() {}
+  
   
 };
 
@@ -34,7 +39,7 @@ namespace my {
 namespace module {
 
 gleam::Ref<::my::module::Void> noop() {
-  gleam::Ref<::my::module::Void> v = gleam::MakeRef<::my::module::Void>();
+  gleam::Ref<::my::module::Void> v = gleam::MakeRef<::my::module::Void$Void>();
   return v;
 };
 

@@ -11,17 +11,24 @@ namespace my {
 namespace module {
 
 template <typename T$8>
-class Box;
+struct Box;
+template <typename T$8>
+struct Box$Box;
 
 int64_t move_num(int64_t n);
 
 template <typename T$8>
-class Box {
-public:
-  Box(T$8 inner) : m$inner(inner) {}
-  T$8 inner() const { return m$inner; }
-private:
-  T$8 m$inner;
+struct Box {
+  explicit Box(T$8 inner) : inner(inner) {}
+  virtual ~Box() = default;
+  T$8 inner;
+};
+
+template <typename T$8>
+struct Box$Box : public Box<T$8> {
+  explicit Box$Box(T$8 inner) : Box<T$8>(inner) {}
+  
+  
 };
 
 } // namespace my
@@ -36,8 +43,8 @@ namespace my {
 namespace module {
 
 int64_t move_num(int64_t n) {
-  gleam::Ref<::my::module::Box<int64_t>> box = gleam::MakeRef<::my::module::Box<int64_t>>(n);
-  return box->inner();
+  gleam::Ref<::my::module::Box<int64_t>> box = gleam::MakeRef<::my::module::Box$Box<int64_t>>(n);
+  return box->inner;
 };
 
 } // namespace my

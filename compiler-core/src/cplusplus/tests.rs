@@ -1,6 +1,7 @@
 mod expression;
 mod functions;
 mod list;
+mod patterns;
 mod records;
 
 #[macro_export]

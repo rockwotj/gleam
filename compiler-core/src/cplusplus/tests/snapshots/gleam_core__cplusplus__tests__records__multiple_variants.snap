@@ -10,34 +10,25 @@ expression: "\npub type User {\n  LoggedIn(name: String)\n  Guest\n}\n"
 namespace my {
 namespace module {
 
-class User;
+struct User;
+struct User$LoggedIn;
+struct User$Guest;
 
-class LoggedIn;
-
-class Guest;
-
-class User {
-public:
-  User() {}
-  virtual ~User() {}
-  
-private:
+struct User {
+  explicit User() {}
+  virtual ~User() = default;
   
 };
 
-class LoggedIn : public User {
-public:
-  LoggedIn(gleam::String name) : User(), m$name(name) {}
-  gleam::String name() const { return m$name; }
-private:
-  gleam::String m$name;
+struct LoggedIn$User : public User {
+  explicit LoggedIn$User(gleam::String name) : User(), name(name) {}
+  
+  gleam::String name;
 };
 
-class Guest : public User {
-public:
-  Guest() : User() {}
+struct Guest$User : public User {
+  explicit Guest$User() : User() {}
   
-private:
   
 };
 

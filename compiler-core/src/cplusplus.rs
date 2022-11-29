@@ -14,7 +14,8 @@ pub(crate) mod error;
 mod expression;
 mod keywords;
 mod meta;
-mod scope;
+mod record;
+mod symbolizer;
 #[cfg(test)]
 mod tests;
 

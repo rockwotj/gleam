@@ -1,523 +1,356 @@
-use crate::ast::{Arg, AssignmentKind, BinOp, CallArg, Pattern, TypedExpr};
-use crate::cplusplus::declaration::{function_args, to_symbol, transform_type};
+use crate::ast;
 use crate::cplusplus::error::Error;
-use crate::cplusplus::scope::{LexicalScope, LocalVariable};
+use crate::cplusplus::symbolizer::Symbolizer;
 use crate::cplusplus::INDENT;
 use crate::docvec;
+use crate::ir;
 use crate::pretty::*;
-use crate::type_::{PatternConstructor, Type, ValueConstructor, ValueConstructorVariant};
+use crate::type_::Type;
 use itertools::Itertools;
-use std::borrow::Borrow;
 use std::sync::Arc;
 use std::vec::Vec;
 
-pub struct GeneratedExpr<'a> {
-    pub eval: Document<'a>,
-    pub result: Document<'a>,
+pub struct NativeIrCodeGenerator {
+    symbolizer: Symbolizer,
 }
 
-impl<'a> GeneratedExpr<'a> {
-    fn nil() -> GeneratedExpr<'a> {
-        GeneratedExpr {
-            eval: nil(),
-            result: nil(),
+impl<'module> NativeIrCodeGenerator {
+    pub fn new() -> Self {
+        NativeIrCodeGenerator {
+            symbolizer: Symbolizer::new(),
         }
     }
-    fn new(eval: Document<'a>, result: Document<'a>) -> GeneratedExpr<'a> {
-        GeneratedExpr { eval, result }
-    }
-    fn result(result: Document<'_>) -> GeneratedExpr<'_> {
-        GeneratedExpr {
-            eval: nil(),
-            result,
-        }
-    }
-    fn of(result: &str) -> GeneratedExpr<'_> {
-        GeneratedExpr {
-            eval: nil(),
-            result: Document::String(result.to_owned()),
-        }
-    }
-}
 
-pub(crate) struct ExpressionGenerator {
-    lexical_scope: LexicalScope,
-}
-
-impl<'module> ExpressionGenerator {
-    pub fn new(lexical_scope: LexicalScope) -> Self {
-        ExpressionGenerator { lexical_scope }
-    }
-
-    pub fn generate_expr(
+    pub fn ir_to_doc(
         &mut self,
-        expr: &'module TypedExpr,
-    ) -> Result<GeneratedExpr<'module>, Error> {
+        statements: Vec<ir::Statement<'module>>,
+    ) -> Result<Document<'module>, Error> {
+        Ok(Document::Vec(
+            Itertools::intersperse(
+                statements.into_iter().map(|s| self.ir_statement_to_doc(s)),
+                Ok(line()),
+            )
+            .try_collect()?,
+        ))
+    }
+
+    fn ir_statement_to_doc(
+        &mut self,
+        statement: ir::Statement<'module>,
+    ) -> Result<Document<'module>, Error> {
+        Ok(match statement {
+            ir::Statement::Return { expr } => {
+                docvec!["return ", self.ir_expr_to_doc(expr)?, ";"]
+            }
+            ir::Statement::Assignment { var, expr, typ } => {
+                docvec![
+                    self.typ_to_symbol(typ)?,
+                    " ",
+                    self.ir_identifier_to_doc(var)?,
+                    " = ",
+                    self.ir_expr_to_doc(expr)?,
+                    ";"
+                ]
+            }
+            ir::Statement::Expr { expr } => docvec![self.ir_expr_to_doc(expr)?, ";"],
+            ir::Statement::Conditional { test, body } => docvec![
+                "if (",
+                self.ir_expr_to_doc(test)?,
+                ") {",
+                self.ir_to_doc(body)?.nest(INDENT).group(),
+                "}",
+            ],
+        })
+    }
+
+    fn ir_expr_to_doc(
+        &mut self,
+        expr: ir::Expression<'module>,
+    ) -> Result<Document<'module>, Error> {
         Ok(match expr {
-            TypedExpr::Int { value, .. } => GeneratedExpr::of(value),
-            TypedExpr::Float { value, .. } => GeneratedExpr::of(value),
-            TypedExpr::String { value, .. } => {
-                // TODO: Are there other values (\t, \r, etc) that we need to escape?
-                let doc = if value.contains('\n') {
-                    Document::String(value.replace('\n', r#"\n"#))
-                } else {
-                    value.to_doc()
-                };
-                // TODO: Do we need to escape quotes?
-                GeneratedExpr::result(doc.surround("gleam::MakeString(u8\"", "\")"))
+            ir::Expression::Literal(literal) => self.ir_literal_to_doc(literal)?,
+            ir::Expression::Call(call) => self.ir_call_to_doc(call)?,
+            ir::Expression::Accessor(accessor) => self.ir_accessor_to_doc(accessor)?,
+            ir::Expression::TypeConstruction(construction) => {
+                self.ir_type_construction_to_doc(construction)?
             }
-            TypedExpr::Var {
-                name, constructor, ..
-            } => self.generate_variable(name, constructor)?,
-            TypedExpr::RecordAccess { record, label, .. } => {
-                self.generate_record_access(label, record)?
+            ir::Expression::BinOp { left, op, right } => {
+                docvec![
+                    self.wrap_expr(*left)?,
+                    " ",
+                    generate_bin_op(op)?,
+                    " ",
+                    self.wrap_expr(*right)?,
+                ]
             }
-            TypedExpr::BinOp {
+            ir::Expression::UnaryOp { op, expr } => {
+                docvec![self.generate_unary_op(op)?, self.wrap_expr(*expr)?]
+            }
+        })
+    }
+
+    fn ir_literal_to_doc(
+        &mut self,
+        literal: ir::Literal<'module>,
+    ) -> Result<Document<'module>, Error> {
+        Ok(match literal {
+            ir::Literal::Bool { value } => if value { "true" } else { "false" }.to_doc(),
+            // TODO: Can we tell the compiler that the str's lifetime here is not tied to `literal`
+            // but to `'module`?
+            ir::Literal::Int { value } => Document::String(value.to_owned()),
+            ir::Literal::Float { value } => Document::String(value.to_owned()),
+            ir::Literal::String { value } => {
+                Document::String(value).surround("gleam::MakeString(u8\"", "\")")
+            }
+            ir::Literal::Nil => "gleam::Nil::INSTANCE".to_doc(),
+        })
+    }
+
+    fn ir_call_to_doc(&mut self, call: ir::Call<'module>) -> Result<Document<'module>, Error> {
+        Ok(match call {
+            ir::Call::Fn { callee, args } => {
+                let formatted_args = comma_seperate(
+                    args.into_iter()
+                        .map(|e| self.ir_expr_to_doc(e))
+                        .try_collect()?,
+                );
+                docvec![self.ir_expr_to_doc(*callee)?, "(", formatted_args, ")",]
+            }
+        })
+    }
+
+    fn ir_accessor_to_doc(
+        &mut self,
+        accessor: ir::Accessor<'module>,
+    ) -> Result<Document<'module>, Error> {
+        Ok(match accessor {
+            ir::Accessor::Custom { label, reciever } => {
+                docvec![self.ir_expr_to_doc(*reciever)?, "->", label.to_doc()]
+            }
+            ir::Accessor::TupleIndex { index, tuple } => self.ir_expr_to_doc(*tuple)?.surround(
+                docvec!["gleam::Get<", Document::String(format!("{}", index)), ">("],
+                ")",
+            ),
+            ir::Accessor::LocalVariable { name, .. } => self.ir_identifier_to_doc(name)?,
+            ir::Accessor::ModuleVariable {
+                public,
+                module,
+                module_alias,
                 name,
-                left,
-                right,
                 typ,
-                ..
-            } => {
-                if *name == BinOp::And || *name == BinOp::Or {
-                    self.generate_lazy_bin_op(typ, name, left, right)?
+            } => self.module_symbol(name, public, &module[..], module_alias, &typ)?,
+        })
+    }
+
+    fn ir_identifier_to_doc(
+        &mut self,
+        identifier: ir::Identifier<'module>,
+    ) -> Result<Document<'module>, Error> {
+        Ok(match identifier {
+            ir::Identifier::Named(name, count) => {
+                if count == 0 {
+                    name.to_doc()
                 } else {
-                    self.generate_eager_binop(name, left, right)?
+                    docvec![name, "$", count]
                 }
             }
-            TypedExpr::Assignment {
-                kind: AssignmentKind::Let,
-                value,
-                typ,
-                pattern,
-                ..
-            } => self.generate_assignment(value, typ, pattern)?,
-            TypedExpr::Pipeline { expressions, .. } | TypedExpr::Sequence { expressions, .. } => {
-                self.generate_sequence(expressions)?
+            ir::Identifier::Internal(count) => {
+                if count == 0 {
+                    "_tmp$$".to_doc()
+                } else {
+                    docvec!["_tmp$$", count]
+                }
             }
-            TypedExpr::Call { fun, args, .. } => self.generate_call(fun, args)?,
-            TypedExpr::Fn {
-                args, body, typ, ..
-            } => self.generate_fn(typ, args, body)?,
-            TypedExpr::List {
+            ir::Identifier::Discard(count) => {
+                if count == 0 {
+                    "_$".to_doc()
+                } else {
+                    docvec!["_$", count]
+                }
+            }
+        })
+    }
+
+    fn ir_type_construction_to_doc(
+        &mut self,
+        construction: ir::TypeConstruction<'module>,
+    ) -> Result<Document<'module>, Error> {
+        Ok(match construction {
+            ir::TypeConstruction::Tuple { typ, elements } => {
+                docvec![
+                    "gleam::MakeTuple",
+                    self.symbolizer.symbol_args(&typ)?,
+                    "(",
+                    comma_seperate(
+                        elements
+                            .into_iter()
+                            .map(|e| self.ir_expr_to_doc(e))
+                            .try_collect()?
+                    ),
+                    ")",
+                ]
+            }
+            ir::TypeConstruction::List {
                 typ,
                 elements,
                 tail,
-                ..
-            } => self.generate_list(typ, elements, tail)?,
-            _ => {
-                return Err(Error::Unimplemented {
-                    message: format!("{:?}", expr),
-                })
-            }
-        })
-    }
-
-    fn generate_list(
-        &mut self,
-        typ: &'module Arc<Type>,
-        elements: &'module [TypedExpr],
-        tail: &'module Option<Box<TypedExpr>>,
-    ) -> Result<GeneratedExpr<'module>, Error> {
-        let mut list_eval = nil();
-        let mut element_results: Vec<Document<'module>> = vec![];
-        for element in elements {
-            let GeneratedExpr { eval, result } = self.generate_expr(element)?;
-            list_eval = list_eval.append(eval);
-            element_results.push(result);
-        }
-        let element_type = typ
-            .list_element_type()
-            .expect("Unable to determine list element type");
-        let GeneratedExpr {
-            eval: tail_eval,
-            result: tail_result,
-        } = match tail {
-            Some(t) => self.generate_expr(t)?,
-            None => GeneratedExpr::nil(),
-        };
-        list_eval = list_eval.append(tail_eval);
-        let list_result = docvec![
-            "gleam::MakeList<",
-            transform_type(element_type.borrow()),
-            ">({",
-            Document::Vec(
-                Itertools::intersperse(element_results.into_iter(), break_(",", ", ")).collect()
-            ),
-            "}",
-            if tail_result.is_empty() {
-                nil()
-            } else {
-                break_(",", ", ").append(tail_result)
-            },
-            ")",
-        ];
-        return Ok(GeneratedExpr::new(list_eval, list_result));
-    }
-
-    fn generate_variable(
-        &mut self,
-        name: &'module str,
-        constructor: &'module ValueConstructor,
-    ) -> Result<GeneratedExpr<'module>, Error> {
-        Ok(match constructor {
-            ValueConstructor {
-                public,
-                variant: ValueConstructorVariant::ModuleFn { module, name, .. },
-                type_,
             } => {
-                let (mut args, ret_type) =
-                    type_.fn_types().ok_or_else(|| Error::InternalError {
-                        message: format!("Unexpected type for ModuleFn: {:?}", type_),
-                    })?;
-                args.push(ret_type);
-                GeneratedExpr::result(to_symbol(name, *public, module, &args))
+                docvec![
+                    "gleam::MakeList",
+                    self.symbolizer.symbol_args(&typ)?,
+                    "(",
+                    docvec![
+                        comma_seperate(
+                            elements
+                                .into_iter()
+                                .map(|e| self.ir_expr_to_doc(e))
+                                .try_collect()?
+                        )
+                        .surround("{", "}"),
+                        tail.map(|e| {
+                            let t = self.ir_expr_to_doc(*e)?;
+                            Ok(break_(",", ", ").append(t))
+                        })
+                        .unwrap_or_else(|| Ok(nil()))?,
+                    ]
+                    .nest(INDENT)
+                    .group(),
+                    ")",
+                ]
             }
-            ValueConstructor {
+            ir::TypeConstruction::Custom {
                 public,
-                variant:
-                    ValueConstructorVariant::Record {
-                        module,
-                        name,
-                        arity,
-                        ..
-                    },
-                type_,
-            } if *arity > 0 => {
-                let (mut args, ret_type) =
-                    type_.fn_types().ok_or_else(|| Error::InternalError {
-                        message: format!("Unexpected type for record constructor: {:?}", type_),
-                    })?;
-                let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
-                let arg_types = Document::Vec(
-                    Itertools::intersperse(
-                        args.iter().map(|arg| transform_type(arg)),
-                        break_(",", ", "),
-                    )
-                    .collect(),
-                );
-                args.push(ret_type);
-                GeneratedExpr::result(docvec!(
-                    "gleam::WrappedConstructor<",
-                    // TODO: This seems to be the wrong public?
-                    to_symbol(name, *public, &module, &args),
-                    break_(",", ", "),
-                    arg_types,
-                    ">()",
-                ))
-            }
-            ValueConstructor {
-                variant: ValueConstructorVariant::Record { module, name, .. },
-                ..
-            } if module.is_empty() && name == "True" => GeneratedExpr::of("true"),
-            ValueConstructor {
-                variant: ValueConstructorVariant::Record { module, name, .. },
-                ..
-            } if module.is_empty() && name == "False" => GeneratedExpr::of("false"),
-            ValueConstructor {
-                public,
-                variant: ValueConstructorVariant::Record { module, name, .. },
-                type_,
+                module,
+                module_alias,
+                name,
+                args,
+                typ,
             } => {
-                let args = match type_.as_ref() {
-                    Type::App { args, .. } => Ok(args),
-                    _ => Err(Error::InternalError {
-                        message: format!("Unexpected type for record singleton: {:?}", type_),
-                    }),
-                }?;
-                let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
-                // TODO: If this is a template we need to declare that
-                GeneratedExpr::result(docvec![
+                docvec![
                     "gleam::MakeRef<",
-                    to_symbol(name, *public, &module, args),
+                    self.module_symbol(name, public, &module[..], module_alias, &typ)?,
+                    ">(",
+                    comma_seperate(
+                        args.into_iter()
+                            .map(|e| self.ir_expr_to_doc(e))
+                            .try_collect()?
+                    )
+                    .nest(INDENT)
+                    .group(),
+                    ")",
+                ]
+            }
+            ir::TypeConstruction::CustomSingleton {
+                public,
+                module,
+                module_alias,
+                name,
+                typ,
+            } => {
+                docvec![
+                    "gleam::MakeRef<",
+                    self.module_symbol(name, public, &module[..], module_alias, &typ)?,
                     ">()",
-                ])
+                ]
             }
-            _ => GeneratedExpr::result(self.lexical_scope.local_var(name)?.name),
-        })
-    }
-
-    fn generate_record_access(
-        &mut self,
-        label: &'module str,
-        record: &'module TypedExpr,
-    ) -> Result<GeneratedExpr<'module>, Error> {
-        let generated_record = self.generate_expr(record)?;
-
-        Ok(GeneratedExpr::new(
-            generated_record.eval,
-            generated_record
-                .result
-                .append(docvec!["->", Document::String(label.to_owned()), "()",]),
-        ))
-    }
-
-    fn generate_fn(
-        &mut self,
-        typ: &'module Arc<Type>,
-        args: &'module Vec<Arg<Arc<Type>>>,
-        body: &'module TypedExpr,
-    ) -> Result<GeneratedExpr<'module>, Error> {
-        let (_, result_type) = typ.fn_types().ok_or(Error::InternalError {
-            message: format!("Unexpected type for function: {:?}", typ),
-        })?;
-        self.lexical_scope = self.lexical_scope.clone().into_child();
-        for arg in args {
-            if let Some(name) = arg.names.get_variable_name() {
-                let _ = self.lexical_scope.declare_local_var(name, &arg.type_);
-            }
-        }
-        let GeneratedExpr { eval, result } = self.generate_expr(body)?;
-        self.lexical_scope =
-            self.lexical_scope
-                .clone()
-                .into_parent()
-                .ok_or(Error::InternalError {
-                    message: "Unexpected root scope".into(),
+            ir::TypeConstruction::Function { typ, args, body } => {
+                let (_, result_type) = typ.fn_types().ok_or(Error::InternalError {
+                    message: format!("Unexpected type for function: {:?}", typ),
                 })?;
-        let body_expr = docvec![line(), eval, docvec!["return ", result, ";"]]
-            .nest(INDENT)
-            .group();
-        let lambda_decl = docvec![
-            "[=](",
-            function_args(args),
-            ") -> ",
-            transform_type(&result_type),
-            " {",
-            body_expr,
-            line(),
-            "}",
-        ];
-        return Ok(GeneratedExpr::result(lambda_decl));
+                let statements = self.ir_to_doc(body)?;
+                docvec![
+                    "[=](",
+                    self.function_args(args)?,
+                    ") -> ",
+                    self.typ_to_symbol(result_type)?,
+                    " {",
+                    docvec![line(), statements,].nest(INDENT).group(),
+                    line(),
+                    "}",
+                ]
+            }
+        })
     }
 
-    fn generate_call(
+    fn function_args(
         &mut self,
-        fun: &'module TypedExpr,
-        args: &'module [CallArg<TypedExpr>],
-    ) -> Result<GeneratedExpr<'module>, Error> {
-        let call_fn = match fun {
-            TypedExpr::Var {
-                constructor:
-                    ValueConstructor {
-                        public,
-                        variant: ValueConstructorVariant::ModuleFn { module, name, .. },
-                        type_,
-                    },
-                ..
-            } => {
-                let (mut args, ret_type) =
-                    type_.fn_types().ok_or_else(|| Error::InternalError {
-                        message: format!("Unexpected type for module fn: {:?}", type_),
-                    })?;
-                args.push(ret_type);
-                GeneratedExpr::result(to_symbol(name, *public, module, &args))
-            }
-            TypedExpr::Var {
-                constructor:
-                    ValueConstructor {
-                        public,
-                        variant: ValueConstructorVariant::Record { module, name, .. },
-                        type_,
-                    },
-                ..
-            } => {
-                let args = match type_.as_ref() {
-                    Type::App { args, .. } => Ok(args.clone()),
-                    Type::Fn { args, retrn } => {
-                        let mut args = args.clone();
-                        args.push(retrn.clone());
-                        Ok(args)
-                    }
-                    _ => Err(Error::InternalError {
-                        message: format!("Unexpected type for record constructor: {:?}", type_),
-                    }),
-                }?;
-                let module: Vec<String> = module.split('/').map(|s| s.to_string()).collect();
-                // TODO: If this is a template we need to declare that
-                GeneratedExpr::result(
-                    to_symbol(name, *public, &module, &args).surround("gleam::MakeRef<", ">"),
+        args: Vec<ir::FunctionArg<'module>>,
+    ) -> Result<Document<'module>, Error> {
+        let mut arg_docs = vec![];
+        for arg in args {
+            arg_docs.push(docvec![
+                self.symbolizer.type_to_symbol(&arg.typ)?,
+                " ",
+                self.ir_identifier_to_doc(arg.name)?,
+            ]);
+        }
+        Ok(comma_seperate(arg_docs))
+    }
+
+    fn wrap_expr(&mut self, expr: ir::Expression<'module>) -> Result<Document<'module>, Error> {
+        let needs_wrap = !matches!(
+            expr,
+            ir::Expression::Literal(_)
+                | ir::Expression::Accessor(
+                    ir::Accessor::LocalVariable { .. } | ir::Accessor::ModuleVariable { .. }
                 )
-            }
-            _ => {
-                let GeneratedExpr { eval, result } = self.generate_expr(fun)?;
-                GeneratedExpr::new(eval, result)
-            }
-        };
-        let mut statements = call_fn.eval;
-        let generated_args: Vec<GeneratedExpr<'module>> = args
-            .iter()
-            .map(|arg| self.generate_expr(&arg.value))
-            .try_collect()?;
-        let mut args: Vec<Document<'module>> = vec![];
-        for generated_arg in generated_args {
-            statements = statements.append(generated_arg.eval);
-            args.push(generated_arg.result);
+        );
+        if !needs_wrap {
+            return self.ir_expr_to_doc(expr);
         }
-        let call =
-            Document::Vec(Itertools::intersperse(args.into_iter(), break_(",", ", ")).collect())
-                .surround(call_fn.result.append("("), ")");
-        Ok(GeneratedExpr::new(statements, call))
+        return Ok(self.ir_expr_to_doc(expr)?.surround("(", ")"));
     }
 
-    fn generate_sequence(
-        &mut self,
-        expressions: &'module Vec<TypedExpr>,
-    ) -> Result<GeneratedExpr<'module>, Error> {
-        let mut seq = nil();
-        let mut result = nil();
-        for expr in expressions {
-            let generated = self.generate_expr(expr)?;
-            let prev = if result.is_empty() {
-                result
-            } else {
-                docvec![result, ";", line()]
-            };
-            seq = seq.append(docvec![prev, generated.eval]);
-            result = generated.result;
-        }
-        return Ok(GeneratedExpr::new(seq, result));
+    fn typ_to_symbol(&mut self, typ: Arc<Type>) -> Result<Document<'module>, Error> {
+        self.symbolizer.type_to_symbol(&typ)
     }
 
-    fn generate_assignment(
+    fn module_symbol(
         &mut self,
-        value: &'module TypedExpr,
-        typ: &'module Arc<Type>,
-        pattern: &'module Pattern<PatternConstructor, Arc<Type>>,
-    ) -> Result<GeneratedExpr<'module>, Error> {
-        let generated_value = self.generate_expr(value)?;
-        if let Pattern::Var { name, .. } = pattern {
-            let LocalVariable { name, .. } = self.lexical_scope.declare_local_var(name, typ);
-            return Ok(GeneratedExpr {
-                eval: generated_value.eval,
-                result: docvec![
-                    transform_type(typ),
-                    " ",
-                    name,
-                    " = ",
-                    generated_value.result,
-                ],
-            });
-        }
-        Err(Error::Unimplemented {
-            message: format!("Unsupported pattern assignment: {:?}", pattern),
+        name: &str,
+        public: bool,
+        module: &[&str],
+        module_alias: Option<&str>,
+        typ: &Type,
+    ) -> Result<Document<'module>, Error> {
+        self.symbolizer
+            .module_symbol(name, public, module, module_alias, typ)
+    }
+
+    fn generate_unary_op(&mut self, op: ir::UnaryOp) -> Result<&'static str, Error> {
+        Ok(match op {
+            ir::UnaryOp::Negate => "!",
         })
-    }
-
-    fn generate_lazy_bin_op(
-        &mut self,
-        typ: &'module Arc<Type>,
-        name: &'module BinOp,
-        left: &'module TypedExpr,
-        right: &'module TypedExpr,
-    ) -> Result<GeneratedExpr<'module>, Error> {
-        // TODO: There are cases when this can be simplified to a "normal" || or && in C++, but then
-        // this also needs to be handled in the wrapping logic.
-        let left_expr = self.generate_expr(left)?;
-        let LocalVariable {
-            name: tmp_var_name, ..
-        } = self.lexical_scope.declare_local_var("tmp", typ);
-        let right_expr = self.generate_expr(right)?;
-        let negate = if *name == BinOp::And { "" } else { "!" };
-        let lazy_eval = docvec![
-            line(),
-            right_expr.eval,
-            tmp_var_name.clone(),
-            " = ",
-            right_expr.result,
-            ";"
-        ]
-        .nest(INDENT)
-        .group();
-        Ok(GeneratedExpr {
-            eval: docvec![
-                left_expr.eval,
-                "bool ",
-                tmp_var_name.clone(),
-                " = ",
-                left_expr.result,
-                ";",
-                line(),
-                "if (",
-                negate.to_doc(),
-                tmp_var_name.clone(),
-                ") {",
-                lazy_eval,
-                line(),
-                "}",
-                line(),
-            ],
-            result: tmp_var_name.clone(),
-        })
-    }
-
-    fn generate_eager_binop(
-        &mut self,
-        name: &'module BinOp,
-        left: &'module TypedExpr,
-        right: &'module TypedExpr,
-    ) -> Result<GeneratedExpr<'module>, Error> {
-        let left_expr = self.generate_expr(left)?;
-        let right_expr = self.generate_expr(right)?;
-        let wrap_left = is_wrapped_binop_child_expression(left);
-        let wrap_right = is_wrapped_binop_child_expression(right);
-        let final_result = docvec![
-            if wrap_left {
-                left_expr.result.surround("(", ")")
-            } else {
-                left_expr.result
-            },
-            " ",
-            generate_op(name)?,
-            " ",
-            if wrap_right {
-                right_expr.result.surround("(", ")")
-            } else {
-                right_expr.result
-            },
-        ];
-        Ok(GeneratedExpr::new(
-            docvec![left_expr.eval, right_expr.eval],
-            final_result,
-        ))
     }
 }
 
-fn is_wrapped_binop_child_expression(expr: &TypedExpr) -> bool {
-    if expr.is_literal() {
-        return false;
-    }
-    match expr {
-        TypedExpr::Var { .. } => false,
-        TypedExpr::BinOp { name, .. } => *name != BinOp::And && *name != BinOp::Or,
-        TypedExpr::RecordAccess { .. } => false,
-        _ => true,
-    }
+fn comma_seperate(elements: Vec<Document<'_>>) -> Document<'_> {
+    join(elements, break_(",", ", "))
 }
 
-fn generate_op(op: &BinOp) -> Result<&'static str, Error> {
+fn generate_bin_op(op: ast::BinOp) -> Result<&'static str, Error> {
     Ok(match op {
-        BinOp::Eq => "==",
-        BinOp::NotEq => "!=",
-        BinOp::LtInt => "<",
-        BinOp::LtEqInt => "<=",
-        BinOp::LtFloat => "<",
-        BinOp::LtEqFloat => "<=",
-        BinOp::GtEqInt => ">=",
-        BinOp::GtInt => ">",
-        BinOp::GtEqFloat => ">=",
-        BinOp::GtFloat => ">",
-        BinOp::AddInt => "+",
-        BinOp::AddFloat => "+",
-        BinOp::SubInt => "-",
-        BinOp::SubFloat => "-",
-        BinOp::MultInt => "*",
-        BinOp::MultFloat => "*",
-        BinOp::DivInt => "/",
-        BinOp::DivFloat => "/",
-        BinOp::RemainderInt => "%",
-        BinOp::Concatenate => "+",
-        BinOp::And => "&&",
-        BinOp::Or => "||",
+        ast::BinOp::Eq => "==",
+        ast::BinOp::NotEq => "!=",
+        ast::BinOp::LtInt => "<",
+        ast::BinOp::LtEqInt => "<=",
+        ast::BinOp::LtFloat => "<",
+        ast::BinOp::LtEqFloat => "<=",
+        ast::BinOp::GtEqInt => ">=",
+        ast::BinOp::GtInt => ">",
+        ast::BinOp::GtEqFloat => ">=",
+        ast::BinOp::GtFloat => ">",
+        ast::BinOp::AddInt => "+",
+        ast::BinOp::AddFloat => "+",
+        ast::BinOp::SubInt => "-",
+        ast::BinOp::SubFloat => "-",
+        ast::BinOp::MultInt => "*",
+        ast::BinOp::MultFloat => "*",
+        ast::BinOp::DivInt => "/",
+        ast::BinOp::DivFloat => "/",
+        ast::BinOp::RemainderInt => "%",
+        ast::BinOp::Concatenate => "+",
+        ast::BinOp::And => "&&",
+        ast::BinOp::Or => "||",
     })
 }
