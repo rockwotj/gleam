@@ -137,10 +137,8 @@ impl<'module> NativeIrCodeGenerator {
                 module,
                 module_alias,
                 name,
-                ..
-            } => {
-                self.module_symbol(name, public, &module[..], module_alias)?
-            }
+                typ,
+            } => self.module_symbol(name, public, &module[..], module_alias, &typ)?,
         })
     }
 
@@ -201,17 +199,22 @@ impl<'module> NativeIrCodeGenerator {
                     "gleam::MakeList",
                     self.symbolizer.to_symbol_args(&typ)?,
                     "(",
-                    comma_seperate(
-                        elements
-                            .into_iter()
-                            .map(|e| self.ir_expr_to_doc(e))
-                            .try_collect()?
-                    ),
-                    tail.map(|e| {
-                        let t = self.ir_expr_to_doc(*e)?;
-                        Ok(break_(",", ", ").append(t))
-                    })
-                    .unwrap_or(Ok(nil()))?,
+                    docvec![
+                        comma_seperate(
+                            elements
+                                .into_iter()
+                                .map(|e| self.ir_expr_to_doc(e))
+                                .try_collect()?
+                        )
+                        .surround("{", "}"),
+                        tail.map(|e| {
+                            let t = self.ir_expr_to_doc(*e)?;
+                            Ok(break_(",", ", ").append(t))
+                        })
+                        .unwrap_or(Ok(nil()))?,
+                    ]
+                    .nest(INDENT)
+                    .group(),
                     ")",
                 ]
             }
@@ -221,29 +224,33 @@ impl<'module> NativeIrCodeGenerator {
                 module_alias,
                 name,
                 args,
-                ..
+                typ,
             } => {
                 docvec![
                     "gleam::MakeRef<",
-                    self.module_symbol(name, public, &module[..], module_alias)?,
+                    self.module_symbol(name, public, &module[..], module_alias, &typ)?,
                     ">(",
-                    comma_seperate(args.into_iter().map(|e| self.ir_expr_to_doc(e)).try_collect()?),
+                    comma_seperate(
+                        args.into_iter()
+                            .map(|e| self.ir_expr_to_doc(e))
+                            .try_collect()?
+                    ),
                     ")",
                 ]
-            },
+            }
             ir::TypeConstruction::CustomSingleton {
                 public,
                 module,
                 module_alias,
                 name,
-                ..
+                typ,
             } => {
                 docvec![
                     "gleam::MakeRef<",
-                    self.module_symbol(name, public, &module[..], module_alias)?,
+                    self.module_symbol(name, public, &module[..], module_alias, &typ)?,
                     ">()",
                 ]
-            },
+            }
             ir::TypeConstruction::Function { typ, args, body } => {
                 let (_, result_type) = typ.fn_types().ok_or(Error::InternalError {
                     message: format!("Unexpected type for function: {:?}", typ),
@@ -255,7 +262,7 @@ impl<'module> NativeIrCodeGenerator {
                     ") -> ",
                     self.typ_to_symbol(result_type)?,
                     " {",
-                    statements.nest(INDENT).group(),
+                    docvec![line(), statements,].nest(INDENT).group(),
                     line(),
                     "}",
                 ]
@@ -267,7 +274,15 @@ impl<'module> NativeIrCodeGenerator {
         &mut self,
         args: Vec<ir::FunctionArg<'module>>,
     ) -> Result<Document<'module>, Error> {
-        todo!()
+        let mut arg_docs = vec![];
+        for arg in args {
+            arg_docs.push(docvec![
+                self.symbolizer.to_symbol(&arg.typ)?,
+                " ",
+                self.ir_identifier_to_doc(arg.name)?,
+            ]);
+        }
+        Ok(comma_seperate(arg_docs))
     }
 
     fn wrap_expr(&mut self, expr: ir::Expression<'module>) -> Result<Document<'module>, Error> {
@@ -286,14 +301,18 @@ impl<'module> NativeIrCodeGenerator {
     fn typ_to_symbol(&mut self, typ: Arc<Type>) -> Result<Document<'module>, Error> {
         return self.symbolizer.to_symbol(&typ);
     }
-    fn module_symbol(&mut self, 
-                     name: &str,
-                     public: bool,
-                     module: &[&str],
-                     _module_alias: Option<&str>,
-                     ) -> Result<Document<'module>, Error> {
-        let v = vec![];
-        self.symbolizer.to_app_symbol(name, public, &module[..], &v)
+    fn module_symbol(
+        &mut self,
+        name: &str,
+        public: bool,
+        module: &[&str],
+        _module_alias: Option<&str>,
+        typ: &Type,
+    ) -> Result<Document<'module>, Error> {
+        let args = self.symbolizer.extract_symbol_args(typ);
+        let variant_name = format!("{}${}", name, self.symbolizer.app_symbol_name(typ)?);
+        self.symbolizer
+            .to_app_symbol(&variant_name, public, &module[..], &args)
     }
 
     fn generate_unary_op(&mut self, op: ir::UnaryOp) -> Result<&'static str, Error> {
@@ -304,7 +323,7 @@ impl<'module> NativeIrCodeGenerator {
 }
 
 fn comma_seperate(elements: Vec<Document<'_>>) -> Document<'_> {
-    Document::Vec(Itertools::intersperse(elements.into_iter(), break_(",", ", ")).collect())
+    join(elements, break_(",", ", "))
 }
 
 fn generate_bin_op(op: ast::BinOp) -> Result<&'static str, Error> {

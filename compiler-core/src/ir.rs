@@ -138,8 +138,8 @@ pub enum TypeConstruction<'a> {
 
 #[derive(Debug, Clone)]
 pub struct FunctionArg<'a> {
-    name: Identifier<'a>,
-    typ: Arc<Type>,
+    pub name: Identifier<'a>,
+    pub typ: Arc<Type>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -397,12 +397,15 @@ impl<'module> IntermediateRepresentationConverter<'module> {
             ..
         } = fun
         {
+            let (_, retrn) = type_
+                .fn_types()
+                .expect("Constructor variable to be a function");
             return Expression::TypeConstruction(TypeConstruction::Custom {
                 public: *public,
                 module_alias: None,
                 module: split_module_name(module),
                 name,
-                typ: type_.to_owned(),
+                typ: retrn,
                 args,
             });
         } else if let ast::TypedExpr::ModuleSelect {
@@ -499,7 +502,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
                 //   x(str)
                 // }
                 // ```
-                let (args, _) = type_
+                let (args, retrn) = type_
                     .fn_types()
                     .expect("Constructor variable to be a function");
                 let args: Vec<_> = args
@@ -518,7 +521,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
                             module_alias: None,
                             module: split_module_name(module),
                             name,
-                            typ: type_.to_owned(),
+                            typ: retrn,
                             args: args
                                 .into_iter()
                                 .map(|arg| {
@@ -548,13 +551,15 @@ impl<'module> IntermediateRepresentationConverter<'module> {
                 public,
                 variant: ValueConstructorVariant::Record { module, name, .. },
                 type_,
-            } => Expression::TypeConstruction(TypeConstruction::CustomSingleton {
-                public: *public,
-                module: split_module_name(module),
-                module_alias: None,
-                name,
-                typ: type_.to_owned(),
-            }),
+            } => {
+                Expression::TypeConstruction(TypeConstruction::CustomSingleton {
+                    public: *public,
+                    module: split_module_name(module),
+                    module_alias: None,
+                    name,
+                    typ: type_.to_owned(),
+                })
+            },
             ValueConstructor {
                 variant: ValueConstructorVariant::LocalVariable { .. },
                 type_,

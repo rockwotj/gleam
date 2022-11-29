@@ -85,23 +85,36 @@ impl Symbolizer {
         ])
     }
 
-    pub fn to_symbol_args<'a, 'b>(
-        &mut self,
-        typ: &'a Type,
-    ) -> Result<Document<'b>, Error> {
-        Ok(match typ.deref() {
-            Type::App { args, .. } => {
-                self.to_app_symbol_args(args)?
+    pub fn extract_symbol_args(&mut self, typ: &Type) -> Vec<Arc<Type>> {
+        match typ.deref() {
+            Type::App { args, .. } => args.to_owned(),
+            Type::Tuple { elems } => elems.to_owned(),
+            Type::Var { type_ } => match type_.borrow().deref() {
+                TypeVar::Link { type_: typ } => self.extract_symbol_args(&typ),
+                TypeVar::Generic { .. } | TypeVar::Unbound { .. } => vec![],
             },
-            Type::Tuple { elems } => self.to_app_symbol_args(elems)?,
-            Type::Var { type_ } => {
-                match type_.borrow().deref() {
-                    TypeVar::Link { type_: typ } => self.to_symbol_args(&typ)?,
-                    TypeVar::Generic { .. } | TypeVar::Unbound { .. } => nil()
-                }
+            Type::Fn { .. } => vec![],
+        }
+    }
+
+    pub fn to_symbol_args<'a, 'b>(&mut self, typ: &'a Type) -> Result<Document<'b>, Error> {
+        let args = self.extract_symbol_args(typ);
+        self.to_app_symbol_args(&args)
+    }
+
+    pub fn app_symbol_name<'a>(&mut self, typ: &Type) -> Result<String, Error> {
+        match typ.deref() {
+            Type::App { name, .. } => Ok(name.to_owned()),
+            Type::Var { type_ } => match type_.borrow().deref() {
+                TypeVar::Link { type_: typ } => self.app_symbol_name(&typ),
+                TypeVar::Generic { .. } | TypeVar::Unbound { .. } => Err(Error::InternalError {
+                    message: format!("Unexpected generic type when app type expected"),
+                }),
             },
-            Type::Fn { .. } => nil(),
-        })
+            _ => Err(Error::InternalError {
+                message: format!("Unexpected generic type when app type expected"),
+            }),
+        }
     }
 
     pub fn to_app_symbol_args<'a, 'b>(
@@ -117,7 +130,28 @@ impl Symbolizer {
         )
     }
 
-    pub fn infer_template_parameters<'a>(&mut self, args: &'a [Arc<Type>]) -> Vec<Arc<Type>> {
+    pub fn template_specification<'a, 'b>(
+        &mut self,
+        args: &'a [Arc<Type>],
+    ) -> Result<Document<'b>, Error> {
+        let template_params: Vec<_> = self
+            .infer_template_parameters(args)
+            .into_iter()
+            .map(|a| self.to_symbol(&a).map(|d| docvec!["typename ", d]))
+            .try_collect()?;
+        let template_params: Vec<_> = template_params.into_iter().unique().collect();
+        if template_params.is_empty() {
+            return Ok(nil());
+        }
+        Ok(docvec![
+            "template <",
+            comma_seperate(template_params),
+            ">",
+            line()
+        ])
+    }
+
+    fn infer_template_parameters<'a>(&mut self, args: &'a [Arc<Type>]) -> Vec<Arc<Type>> {
         args.iter()
             .flat_map(|a| self.infer_template_parameter(a))
             .collect()
@@ -129,7 +163,13 @@ impl Symbolizer {
                 TypeVar::Link { type_ } => self.infer_template_parameter(type_),
                 _ => vec![arg.clone()],
             },
-            _ => vec![],
+            Type::App { args, .. } => self.infer_template_parameters(args),
+            Type::Tuple { elems } => self.infer_template_parameters(elems),
+            Type::Fn { args, retrn } => vec![
+                self.infer_template_parameters(args),
+                self.infer_template_parameter(retrn),
+            ]
+            .concat(),
         }
     }
 
@@ -139,5 +179,5 @@ impl Symbolizer {
 }
 
 fn comma_seperate(elements: Vec<Document<'_>>) -> Document<'_> {
-    Document::Vec(Itertools::intersperse(elements.into_iter(), break_(",", ", ")).collect())
+    join(elements, break_(",", ", "))
 }

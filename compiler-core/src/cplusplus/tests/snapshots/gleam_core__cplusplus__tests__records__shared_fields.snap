@@ -10,37 +10,28 @@ expression: "\npub type Animal {\n  Cat(name: String, likes_milk: Bool)\n  Dog(n
 namespace my {
 namespace module {
 
-class Animal;
-
-class Cat;
-
-class Dog;
+struct Animal;
+struct Animal$Cat;
+struct Animal$Dog;
 
 gleam::Ref<::my::module::Animal> make_german_shepard(gleam::String name);
 
-class Animal {
-public:
-  Animal(gleam::String name) : m$name(name) {}
-  virtual ~Animal() {}
-  gleam::String name() const { return m$name; }
-private:
-  gleam::String m$name;
+struct Animal {
+  explicit Animal(gleam::String name) : name(name) {}
+  virtual ~Animal() = default;
+  gleam::String name;
 };
 
-class Cat : public Animal {
-public:
-  Cat(gleam::String name, bool likes_milk) : Animal(name), m$likes_milk(likes_milk) {}
-  bool likes_milk() const { return m$likes_milk; }
-private:
-  bool m$likes_milk;
+struct Cat$Animal : public Animal {
+  explicit Cat$Animal(gleam::String name, bool likes_milk) : Animal(name), likes_milk(likes_milk) {}
+  
+  bool likes_milk;
 };
 
-class Dog : public Animal {
-public:
-  Dog(gleam::String name, bool barks) : Animal(name), m$barks(barks) {}
-  bool barks() const { return m$barks; }
-private:
-  bool m$barks;
+struct Dog$Animal : public Animal {
+  explicit Dog$Animal(gleam::String name, bool barks) : Animal(name), barks(barks) {}
+  
+  bool barks;
 };
 
 } // namespace my
@@ -56,7 +47,7 @@ namespace module {
 
 gleam::Ref<::my::module::Animal> make_german_shepard(gleam::String name) {
   bool barks = true;
-  return gleam::MakeRef<::my::module::Dog>(name, barks);
+  return gleam::MakeRef<::my::module::Dog$Animal>(name, barks);
 };
 
 } // namespace my

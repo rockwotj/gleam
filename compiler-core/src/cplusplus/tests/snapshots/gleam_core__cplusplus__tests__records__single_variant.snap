@@ -10,16 +10,20 @@ expression: "\npub type Person { Person(name: String, age: Int) }\n"
 namespace my {
 namespace module {
 
-class Person;
+struct Person;
+struct Person$Person;
 
-class Person {
-public:
-  Person(gleam::String name, int64_t age) : m$name(name), m$age(age) {}
-  gleam::String name() const { return m$name; }
-  int64_t age() const { return m$age; }
-private:
-  gleam::String m$name;
-  int64_t m$age;
+struct Person {
+  explicit Person(gleam::String name, int64_t age) : name(name), age(age) {}
+  virtual ~Person() = default;
+  gleam::String name;
+  int64_t age;
+};
+
+struct Person$Person : public Person {
+  explicit Person$Person(gleam::String name, int64_t age) : Person(name, age) {}
+  
+  
 };
 
 } // namespace my

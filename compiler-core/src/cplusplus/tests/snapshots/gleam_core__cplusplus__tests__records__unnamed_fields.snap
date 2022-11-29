@@ -10,14 +10,19 @@ expression: "\npub type Ip { Ip(String) }\n"
 namespace my {
 namespace module {
 
-class Ip;
+struct Ip;
+struct Ip$Ip;
 
-class Ip {
-public:
-  Ip(gleam::String x$0) : m$0(x$0) {}
-  gleam::String x$0() const { return m$0; }
-private:
-  gleam::String m$0;
+struct Ip {
+  explicit Ip() {}
+  virtual ~Ip() = default;
+  
+};
+
+struct Ip$Ip : public Ip {
+  explicit Ip$Ip(gleam::String _$0) : Ip(), _$0(_$0) {}
+  
+  gleam::String _$0;
 };
 
 } // namespace my

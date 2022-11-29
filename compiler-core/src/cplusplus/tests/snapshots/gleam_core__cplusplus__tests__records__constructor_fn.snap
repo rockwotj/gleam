@@ -10,16 +10,21 @@ expression: "\npub type Person { Person(name: String) }\n\nfn new(name: String) 
 namespace my {
 namespace module {
 
-class Person;
+struct Person;
+struct Person$Person;
 
 gleam::Ref<::my::module::Person> new(gleam::String name);
 
-class Person {
-public:
-  Person(gleam::String name) : m$name(name) {}
-  gleam::String name() const { return m$name; }
-private:
-  gleam::String m$name;
+struct Person {
+  explicit Person(gleam::String name) : name(name) {}
+  virtual ~Person() = default;
+  gleam::String name;
+};
+
+struct Person$Person : public Person {
+  explicit Person$Person(gleam::String name) : Person(name) {}
+  
+  
 };
 
 } // namespace my
@@ -34,7 +39,9 @@ namespace my {
 namespace module {
 
 gleam::Ref<::my::module::Person> new(gleam::String name) {
-  gleam::Function<gleam::Ref<::my::module::Person>, gleam::String> constructor_fn = gleam::WrappedConstructor<::my::module::Person, gleam::String>();
+  gleam::Function<gleam::Ref<::my::module::Person>, gleam::String> constructor_fn = [=](gleam::String _tmp$$) -> gleam::Ref<::my::module::Person> {
+    return gleam::MakeRef<::my::module::Person$Person>(_tmp$$);
+  };
   return constructor_fn(name);
 };
 
