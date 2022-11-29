@@ -5,7 +5,7 @@ use gleam_core::{
     config::PackageConfig,
     io::{FileSystemReader, FileSystemWriter},
     manifest::{Base16Checksum, ManifestPackage, ManifestPackageSource},
-    Error,
+    paths, Error,
 };
 
 use hexpm::version::Version;
@@ -127,7 +127,7 @@ fn gather_compiled_files(
         Target::Native => todo!("Implement me"),
     };
 
-    wfs.read_dir(Path::new("build"))
+    wfs.read_dir(&paths::build())
         .expect("expect the build directory to exist")
         .into_iter()
         .filter_map(|result| result.ok())
@@ -225,7 +225,7 @@ mod test {
 
         assert_eq!(
             result.get("build/dev/javascript/gleam-wasm/main.mjs"),
-            Some(&String::from("import * as $some_library from \"../../some_library/some_library.mjs\";\n\nexport function main() {\n  return $some_library.function$(\"Hello, world!\");\n}\n"))
+            Some(&String::from("import * as $some_library from \"../some_library/some_library.mjs\";\n\nexport function main() {\n  return $some_library.function$(\"Hello, world!\");\n}\n"))
         );
     }
 
