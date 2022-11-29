@@ -21,7 +21,11 @@ impl Symbolizer {
         typ: &'a Type,
     ) -> Result<Document<'b>, Error> {
         match typ {
-            Type::App { name: type_name, args, .. } => {
+            Type::App {
+                name: type_name,
+                args,
+                ..
+            } => {
                 let full_name = format!("{}${}", type_name, name);
                 self.app_symbol(&full_name, public, &module[..], args)
             }
@@ -43,19 +47,21 @@ impl Symbolizer {
                     .try_collect()?;
                 let template_params: Vec<_> = template_params.into_iter().unique().collect();
                 Ok(docvec![
-                   doc,
-                   Document::String(name.to_owned()),
-                   if template_params.is_empty() {
-                       nil()
-                   } else {
-                       comma_seperate(template_params).surround("<", ">")
-                   }
+                    doc,
+                    Document::String(name.to_owned()),
+                    if template_params.is_empty() {
+                        nil()
+                    } else {
+                        comma_seperate(template_params).surround("<", ">")
+                    }
                 ])
-            },
-            Type::Var { .. } => {
-                Err(Error::InternalError { message: "Unexpected generic module symbol".to_owned() })
-            },
-            Type::Tuple { .. } => Err(Error::InternalError { message: "Unexpected tuple module symbol".to_owned() }),
+            }
+            Type::Var { .. } => Err(Error::InternalError {
+                message: "Unexpected generic module symbol".to_owned(),
+            }),
+            Type::Tuple { .. } => Err(Error::InternalError {
+                message: "Unexpected tuple module symbol".to_owned(),
+            }),
         }
     }
 
