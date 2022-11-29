@@ -413,12 +413,15 @@ impl<'module> IntermediateRepresentationConverter<'module> {
             ..
         } = fun
         {
+            let (_, retrn) = type_
+                .fn_types()
+                .expect("Constructor variable to be a function");
             return Expression::TypeConstruction(TypeConstruction::Custom {
                 public: true,
                 module_alias: Some(module_name),
                 module: split_module_name(module_name),
                 name,
-                typ: type_.to_owned(),
+                typ: retrn,
                 args,
             });
         }

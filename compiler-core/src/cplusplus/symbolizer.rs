@@ -12,6 +12,53 @@ impl Symbolizer {
         Symbolizer {}
     }
 
+    pub fn module_symbol<'a, 'b>(
+        &mut self,
+        name: &'a str,
+        public: bool,
+        module: &'a [&'a str],
+        _module_alias: Option<&'a str>,
+        typ: &'a Type,
+    ) -> Result<Document<'b>, Error> {
+        match typ {
+            Type::App { name: type_name, args, .. } => {
+                let full_name = format!("{}${}", type_name, name);
+                self.app_symbol(&full_name, public, &module[..], args)
+            }
+            Type::Fn { args, retrn } => {
+                // TODO: Share the namespacing code and template gen code with other places
+                let mut doc = if module.is_empty() {
+                    "gleam::".to_doc()
+                } else {
+                    Document::String(module.iter().join("::")).surround("::", "::")
+                };
+                if !public {
+                    doc = doc.append("_private::");
+                }
+                let types = vec![args.clone(), vec![retrn.clone()]].concat();
+                let template_params: Vec<_> = types
+                    .into_iter()
+                    .filter(|a| matches!(a.as_ref(), Type::Var { .. }))
+                    .map(|a| self.type_to_symbol(&a))
+                    .try_collect()?;
+                let template_params: Vec<_> = template_params.into_iter().unique().collect();
+                Ok(docvec![
+                   doc,
+                   Document::String(name.to_owned()),
+                   if template_params.is_empty() {
+                       nil()
+                   } else {
+                       comma_seperate(template_params).surround("<", ">")
+                   }
+                ])
+            },
+            Type::Var { .. } => {
+                Err(Error::InternalError { message: "Unexpected generic module symbol".to_owned() })
+            },
+            Type::Tuple { .. } => Err(Error::InternalError { message: "Unexpected tuple module symbol".to_owned() }),
+        }
+    }
+
     pub fn type_to_symbol<'a, 'b>(&mut self, typ: &'a Type) -> Result<Document<'b>, Error> {
         return Ok(if typ.is_int() {
             "int64_t".to_doc()
@@ -47,7 +94,7 @@ impl Symbolizer {
         });
     }
 
-    pub fn function_type<'a, 'b>(
+    fn function_type<'a, 'b>(
         &mut self,
         result: &'a Type,
         args: &'a [Arc<Type>],
@@ -65,7 +112,7 @@ impl Symbolizer {
         Ok(doc.append(">"))
     }
 
-    pub fn app_symbol<'a, 'b, S: AsRef<str>>(
+    fn app_symbol<'a, 'b, S: AsRef<str>>(
         &mut self,
         name: &'a str,
         public: bool,
@@ -95,28 +142,13 @@ impl Symbolizer {
                 TypeVar::Link { type_: typ } => self.extract_symbol_args(typ),
                 TypeVar::Generic { .. } | TypeVar::Unbound { .. } => vec![],
             },
-            Type::Fn { .. } => vec![],
+            Type::Fn { args, retrn } => vec![args.clone(), vec![retrn.clone()]].concat(),
         }
     }
 
     pub fn symbol_args<'a, 'b>(&mut self, typ: &'a Type) -> Result<Document<'b>, Error> {
         let args = self.extract_symbol_args(typ);
         self.app_symbol_args(&args)
-    }
-
-    pub fn app_symbol_name(&mut self, typ: &Type) -> Result<String, Error> {
-        match typ.deref() {
-            Type::App { name, .. } => Ok(name.to_owned()),
-            Type::Var { type_ } => match type_.borrow().deref() {
-                TypeVar::Link { type_: typ } => self.app_symbol_name(typ),
-                TypeVar::Generic { .. } | TypeVar::Unbound { .. } => Err(Error::InternalError {
-                    message: "Unexpected generic type when app type expected".to_owned(),
-                }),
-            },
-            _ => Err(Error::InternalError {
-                message: "Unexpected generic type when app type expected".to_owned(),
-            }),
-        }
     }
 
     pub fn app_symbol_args<'a, 'b>(

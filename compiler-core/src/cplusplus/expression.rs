@@ -234,7 +234,9 @@ impl<'module> NativeIrCodeGenerator {
                         args.into_iter()
                             .map(|e| self.ir_expr_to_doc(e))
                             .try_collect()?
-                    ),
+                    )
+                    .nest(INDENT)
+                    .group(),
                     ")",
                 ]
             }
@@ -308,13 +310,11 @@ impl<'module> NativeIrCodeGenerator {
         name: &str,
         public: bool,
         module: &[&str],
-        _module_alias: Option<&str>,
+        module_alias: Option<&str>,
         typ: &Type,
     ) -> Result<Document<'module>, Error> {
-        let args = self.symbolizer.extract_symbol_args(typ);
-        let variant_name = format!("{}${}", name, self.symbolizer.app_symbol_name(typ)?);
         self.symbolizer
-            .app_symbol(&variant_name, public, module, &args)
+            .module_symbol(name, public, module, module_alias, typ)
     }
 
     fn generate_unary_op(&mut self, op: ir::UnaryOp) -> Result<&'static str, Error> {

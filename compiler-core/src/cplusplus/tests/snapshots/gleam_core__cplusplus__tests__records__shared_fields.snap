@@ -47,7 +47,7 @@ namespace module {
 
 gleam::Ref<::my::module::Animal> make_german_shepard(gleam::String name) {
   bool barks = true;
-  return gleam::MakeRef<::my::module::Dog$Animal>(name, barks);
+  return gleam::MakeRef<::my::module::Animal$Dog>(name, barks);
 };
 
 } // namespace my
