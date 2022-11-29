@@ -269,7 +269,7 @@ impl<'module> IntermediateRepresentationConverter<'module> {
             }
             ast::TypedExpr::Case { .. } => {
                 todo!()
-            },
+            }
             _ if is_in_return_position => vec![Statement::Return {
                 expr: self.convert_expr_to_ir(expr),
             }],
@@ -550,15 +550,13 @@ impl<'module> IntermediateRepresentationConverter<'module> {
                 public,
                 variant: ValueConstructorVariant::Record { module, name, .. },
                 type_,
-            } => {
-                Expression::TypeConstruction(TypeConstruction::CustomSingleton {
-                    public: *public,
-                    module: split_module_name(module),
-                    module_alias: None,
-                    name,
-                    typ: type_.to_owned(),
-                })
-            },
+            } => Expression::TypeConstruction(TypeConstruction::CustomSingleton {
+                public: *public,
+                module: split_module_name(module),
+                module_alias: None,
+                name,
+                typ: type_.to_owned(),
+            }),
             ValueConstructor {
                 variant: ValueConstructorVariant::LocalVariable { .. },
                 type_,

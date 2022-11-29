@@ -4,9 +4,9 @@ use crate::cplusplus::error::Error;
 use crate::cplusplus::symbolizer::Symbolizer;
 use crate::cplusplus::INDENT;
 use crate::docvec;
-use itertools::Itertools;
 use crate::pretty::*;
 use crate::type_::Type;
+use itertools::Itertools;
 use std::sync::Arc;
 
 struct SharedFields {
@@ -87,8 +87,16 @@ impl StructGenerator {
                 )
             })
             .try_collect()?;
-            let super_fields: Vec<_> = shared.arguments.into_iter().map(|(_, arg)| arg).collect();
-            docs.insert(0, self.record_document(name, &StructType::SuperType, &super_fields, typed_parameters)?);
+        let super_fields: Vec<_> = shared.arguments.into_iter().map(|(_, arg)| arg).collect();
+        docs.insert(
+            0,
+            self.record_document(
+                name,
+                &StructType::SuperType,
+                &super_fields,
+                typed_parameters,
+            )?,
+        );
         Ok(join(docs, lines(2)))
     }
 

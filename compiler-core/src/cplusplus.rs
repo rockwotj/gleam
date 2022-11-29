@@ -11,10 +11,10 @@ use std::path::Path;
 
 mod declaration;
 pub(crate) mod error;
-mod record;
 mod expression;
 mod keywords;
 mod meta;
+mod record;
 mod symbolizer;
 #[cfg(test)]
 mod tests;

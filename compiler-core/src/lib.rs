@@ -63,6 +63,7 @@ pub mod error;
 pub mod format;
 pub mod hex;
 pub mod io;
+pub mod ir;
 pub mod javascript;
 pub mod line_numbers;
 pub mod manifest;
@@ -74,7 +75,6 @@ pub mod type_;
 pub mod uid;
 pub mod version;
 pub mod warning;
-pub mod ir;
 
 pub use error::{Error, Result};
 pub use warning::Warning;

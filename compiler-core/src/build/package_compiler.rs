@@ -1,7 +1,7 @@
 use crate::{
     ast::{SrcSpan, TypedModule, UntypedModule},
     build::{dep_tree, Mode, Module, Origin, Package, Target},
-    codegen::{Erlang, CPlusPlus, ErlangApp, JavaScript, TypeScriptDeclarations},
+    codegen::{CPlusPlus, Erlang, ErlangApp, JavaScript, TypeScriptDeclarations},
     config::PackageConfig,
     error,
     io::{

@@ -58,7 +58,9 @@ impl Symbolizer {
             break_(",", ", ")
         ];
         doc = doc.append(comma_seperate(
-            args.iter().map(|arg| self.type_to_symbol(arg)).try_collect()?,
+            args.iter()
+                .map(|arg| self.type_to_symbol(arg))
+                .try_collect()?,
         ));
         Ok(doc.append(">"))
     }

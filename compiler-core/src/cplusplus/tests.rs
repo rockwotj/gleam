@@ -1,8 +1,8 @@
 mod expression;
 mod functions;
 mod list;
-mod records;
 mod patterns;
+mod records;
 
 #[macro_export]
 macro_rules! assert_cpp {

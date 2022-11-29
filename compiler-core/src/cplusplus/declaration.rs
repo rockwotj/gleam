@@ -56,7 +56,6 @@ pub(crate) fn implementation(statement: &TypedStatement) -> Result<Option<Docume
             body,
             ..
         } => {
-
             let mut ir_generator = IntermediateRepresentationConverter::new_for_function(arguments);
             let ir = ir_generator.ast_to_ir(body);
 
@@ -144,9 +143,9 @@ pub(crate) fn forward_declarations(
             let doc = gen.forward_declare_record(name, constructors, typed_parameters)?;
             vec![Declaration::Class {
                 doc,
-                public: *public
+                public: *public,
             }]
-        },
+        }
         TypedStatement::ExternalFn { .. } => vec![],
         TypedStatement::ExternalType { .. } => vec![],
         TypedStatement::ModuleConstant { .. } => vec![],
@@ -169,9 +168,9 @@ pub(crate) fn declarations(statement: &TypedStatement) -> Result<Vec<Declaration
             let doc = gen.generate_record_impl(name, constructors, typed_parameters)?;
             vec![Declaration::Class {
                 doc,
-                public: *public
+                public: *public,
             }]
-        },
+        }
         TypedStatement::ExternalFn { .. } => vec![],
         TypedStatement::ExternalType { .. } => vec![],
         TypedStatement::ModuleConstant { .. } => vec![],
@@ -291,4 +290,3 @@ pub(crate) fn transform_type<'a, 'b>(type_: &'a Type) -> Document<'b> {
 fn generate_generic_type_param<'a>(id: u64) -> Document<'a> {
     Document::String(format!("T${}", id))
 }
-
