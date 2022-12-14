@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use crate::ast;
 use crate::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use crate::uid::UniqueIdGenerator;
@@ -267,9 +269,9 @@ impl<'module> IntermediateRepresentationConverter<'module> {
             | ast::TypedExpr::Pipeline { expressions, .. } => {
                 self.convert_top_level_exprs_to_ir(expressions)
             }
-            ast::TypedExpr::Case { .. } => {
-                todo!()
-            }
+            ast::TypedExpr::Case {
+                subjects, clauses, ..
+            } if is_in_return_position => self.convert_case_to_ir(subjects, clauses),
             _ if is_in_return_position => vec![Statement::Return {
                 expr: self.convert_expr_to_ir(expr),
             }],
@@ -277,6 +279,68 @@ impl<'module> IntermediateRepresentationConverter<'module> {
                 expr: self.convert_expr_to_ir(expr),
             }],
         }
+    }
+
+    // The case expression must be in return position, otherwise coordinating passing back the
+    // result is quite annoying.
+    fn convert_case_to_ir(
+        &mut self,
+        subjects: &'module [ast::TypedExpr],
+        clauses: &'module [ast::TypedClause],
+    ) -> Vec<Statement<'module>> {
+        let subject_variables: Vec<_> = (0..subjects.len())
+            .into_iter()
+            .map(|_| self.allocate_internal_id())
+            .collect();
+        let mut statements: Vec<_> = subjects
+            .iter()
+            .zip_eq(subject_variables.iter())
+            .map(|(e, var)| Statement::Assignment {
+                var: var.to_owned(),
+                expr: self.convert_expr_to_ir(e),
+                typ: e.type_().to_owned(),
+            })
+            .collect();
+        for ast::TypedClause {
+            pattern,
+            alternative_patterns,
+            guard,
+            then,
+            ..
+        } in clauses
+        {
+            statements.push(self.convert_multipattern_to_ir(
+                &subject_variables,
+                pattern,
+                guard,
+                then,
+            ));
+            // Alternative patterns are just shorthands for writing the same guard/then multiple
+            // times, so just expand the shorthand here.
+            // TODO: Is it better to extract the then into a lambda so that there is less code for
+            // the compiler to generate?
+            for pattern in alternative_patterns {
+                statements.push(self.convert_multipattern_to_ir(
+                    &subject_variables,
+                    pattern,
+                    guard,
+                    then,
+                ));
+            }
+        }
+        return statements;
+    }
+
+    // multipattern is the pattern for each subject
+    // guard is an extra if statement before executing then.
+    fn convert_multipattern_to_ir(
+        &mut self,
+        subject_variables: &[Identifier<'module>],
+        multipattern: &'module ast::TypedMultiPattern,
+        guard: &'module Option<ast::TypedClauseGuard>,
+        then: &'module ast::TypedExpr,
+    ) -> Statement<'module> {
+        todo!()
     }
 
     fn convert_expr_to_ir(&mut self, expr: &'module ast::TypedExpr) -> Expression<'module> {
