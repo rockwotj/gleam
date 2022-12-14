@@ -1,10 +1,19 @@
 # Changelog
 
-## Unreleased
+## v0.25.1 - 2022-12-11
 
+- New Gleam projects are now configured to explicitly install rebar3 using
+  GitHub actions erlef/setup-beam.
+- A better error message is now shown when attempting to use a function within a
+  constant expression.
+- Changed float size limit in bitstring expressions to 16, 32 or 64, when static.
+  Also allowed dynamic size.
+- New Gleam projects are created using GitHub actions erlef/setup-beam@v1.15.0.
 - Fixed a bug where returning an anonymous function from a pipeline and calling
   it immediately without assigning it to a variable would produce invalid Erlang
   code.
+- Fixed a bug where the formatter would remove the braces from negating boolean
+  expressions.
 
 ## v0.25.0 - 2022-11-24
 

@@ -2167,14 +2167,24 @@ where
                         self.parse_const_record_finish(start, Some(name), upname, end)
                     }
                     Some((_, Token::Name { name: end_name }, end)) => {
-                        let _ = self.next_tok(); // upname
-                        Ok(Some(Constant::Var {
-                            location: SrcSpan { start, end },
-                            module: Some(name),
-                            name: end_name,
-                            constructor: None,
-                            typ: (),
-                        }))
+                        let _ = self.next_tok(); // name
+
+                        match self.tok0 {
+                            Some((_, Token::LeftParen, _)) => parse_error(
+                                ParseErrorType::UnexpectedFunction,
+                                SrcSpan {
+                                    start,
+                                    end: end + 1,
+                                },
+                            ),
+                            _ => Ok(Some(Constant::Var {
+                                location: SrcSpan { start, end },
+                                module: Some(name),
+                                name: end_name,
+                                constructor: None,
+                                typ: (),
+                            })),
+                        }
                     }
                     Some((start, _, end)) => parse_error(
                         ParseErrorType::UnexpectedToken {

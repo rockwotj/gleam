@@ -1,5 +1,7 @@
 use super::*;
-use crate::{assert_error, assert_module_error, assert_with_module_error};
+use crate::{
+    assert_error, assert_module_error, assert_module_syntax_error, assert_with_module_error,
+};
 
 #[test]
 fn bit_string_invalid_type() {
@@ -185,7 +187,7 @@ fn bit_string_size_not_int_variable() {
 
 #[test]
 fn bit_string_float_size() {
-    // float given size
+    // float given invalid size
     assert_error!("let x = <<1:8-float>> x");
 }
 
@@ -345,6 +347,11 @@ fn function_return_annotation_mismatch_with_pipe() {
             i + 2
          }"
     );
+}
+
+#[test]
+fn functions_called_outside_module() {
+    assert_module_syntax_error!("const first = list.at([1], 0)");
 }
 
 #[test]
